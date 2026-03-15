@@ -1,4 +1,22 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ── Supabase client ───────────────────────────────────────────────────────────
+const supabase = createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+// ── Hook de sesión ────────────────────────────────────────────────────────────
+function useSession() {
+    const [session, setSession] = useState(undefined); // undefined = cargando
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => setSession(session ?? null));
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+        return () => subscription.unsubscribe();
+    }, []);
+    return session;
+}
 
 // ── Icons (inline SVG components) ──────────────────────────────────────────
 const Icon = ({ d, size = 18, stroke = "currentColor", fill = "none", strokeWidth = 1.8 }) => (
@@ -560,15 +578,30 @@ const statusBadge = (e) => {
 
 // ── Components ───────────────────────────────────────────────────────────────
 
-function LoginScreen({ onLogin }) {
-    const [email, setEmail] = useState("admin@fluxia.app");
-    const [pass, setPass] = useState("••••••••");
+function LoginScreen() {
+    const [email, setEmail] = useState("");
+    const [pass, setPass] = useState("");
     const [loading, setLoading] = useState(false);
     const [forgot, setForgot] = useState(false);
+    const [error, setError] = useState(null);
+    const [resetSent, setResetSent] = useState(false);
 
-    const doLogin = () => {
+    const doLogin = async () => {
         setLoading(true);
-        setTimeout(() => { setLoading(false); onLogin(); }, 1400);
+        setError(null);
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (error) setError(error.message);
+        setLoading(false);
+        // Si OK → onAuthStateChange dispara automáticamente
+    };
+
+    const doReset = async () => {
+        setLoading(true);
+        setError(null);
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) setError(error.message);
+        else setResetSent(true);
+        setLoading(false);
     };
 
     return (
@@ -594,12 +627,17 @@ function LoginScreen({ onLogin }) {
                         </div>
                         <div style={{ marginBottom: 8 }}>
                             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", display: "block", marginBottom: 6, letterSpacing: 0.3 }}>CONTRASEÑA</label>
-                            <input className="input-field" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••••" />
+                            <input className="input-field" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === "Enter" && doLogin()} />
                         </div>
+                        {error && (
+                            <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "9px 12px", marginBottom: 12, fontSize: 13, color: "var(--danger)" }}>
+                                {error === "Invalid login credentials" ? "Correo o contraseña incorrectos." : error}
+                            </div>
+                        )}
                         <div style={{ textAlign: "right", marginBottom: 20 }}>
-                            <button className="btn-ghost" style={{ padding: "4px 0", fontSize: 12 }} onClick={() => setForgot(true)}>¿Olvidaste tu contraseña?</button>
+                            <button className="btn-ghost" style={{ padding: "4px 0", fontSize: 12 }} onClick={() => { setForgot(true); setError(null); }}>¿Olvidaste tu contraseña?</button>
                         </div>
-                        <button className="btn-primary" onClick={doLogin} disabled={loading}>
+                        <button className="btn-primary" onClick={doLogin} disabled={loading || !email || !pass}>
                             {loading ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><span className="animate-spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%" }} /> Verificando...</span> : "Iniciar Sesión"}
                         </button>
                         <div className="divider" />
@@ -613,10 +651,6 @@ function LoginScreen({ onLogin }) {
                                 Registrarse
                             </button>
                         </div>
-                        <div style={{ textAlign: "center", marginTop: 20, padding: "12px 16px", background: "var(--bg-surface)", borderRadius: 10, border: "1px solid var(--border)" }}>
-                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>DEMO CREDENTIALS</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>admin@fluxia.app · cualquier contraseña</div>
-                        </div>
                     </>
                 ) : (
                     <>
@@ -624,11 +658,22 @@ function LoginScreen({ onLogin }) {
                             <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Recuperar contraseña</div>
                             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Te enviaremos un link a tu correo</div>
                         </div>
-                        <div style={{ marginBottom: 16 }}>
-                            <input className="input-field" placeholder="tu@empresa.com" />
-                        </div>
-                        <button className="btn-primary" onClick={() => setForgot(false)}>Enviar instrucciones</button>
-                        <button className="btn-ghost" style={{ width: "100%", justifyContent: "center", marginTop: 10 }} onClick={() => setForgot(false)}>← Volver al login</button>
+                        {resetSent ? (
+                            <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "var(--success)", textAlign: "center" }}>
+                                ✓ Revisa tu correo — te enviamos el link
+                            </div>
+                        ) : (
+                            <>
+                                {error && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "9px 12px", marginBottom: 12, fontSize: 13, color: "var(--danger)" }}>{error}</div>}
+                                <div style={{ marginBottom: 16 }}>
+                                    <input className="input-field" placeholder="tu@empresa.com" value={email} onChange={e => setEmail(e.target.value)} />
+                                </div>
+                                <button className="btn-primary" onClick={doReset} disabled={loading || !email}>
+                                    {loading ? "Enviando..." : "Enviar instrucciones"}
+                                </button>
+                            </>
+                        )}
+                        <button className="btn-ghost" style={{ width: "100%", justifyContent: "center", marginTop: 10 }} onClick={() => { setForgot(false); setResetSent(false); setError(null); }}>← Volver al login</button>
                     </>
                 )}
             </div>
@@ -636,7 +681,7 @@ function LoginScreen({ onLogin }) {
     );
 }
 
-function Sidebar({ active, setActive, user }) {
+function Sidebar({ active, setActive, onLogout }) {
     const navItems = [
         { id: "dashboard", icon: icons.chart, label: "Dashboard" },
         { id: "procesar", icon: icons.upload, label: "Procesar Archivos" },
@@ -703,7 +748,7 @@ function Sidebar({ active, setActive, user }) {
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Juan Díaz</div>
                         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>admin@fluxia.app</div>
                     </div>
-                    <button className="btn-ghost" style={{ padding: 6 }} title="Cerrar sesión" onClick={() => window.location.reload()}>
+                    <button className="btn-ghost" style={{ padding: 6 }} title="Cerrar sesión" onClick={onLogout}>
                         <Icon d={icons.logout} size={15} />
                     </button>
                 </div>
@@ -712,7 +757,8 @@ function Sidebar({ active, setActive, user }) {
     );
 }
 
-function Topbar({ page, setPage }) {
+function Topbar({ page, setPage, userEmail }) {
+    const initials = userEmail ? userEmail.substring(0, 2).toUpperCase() : "FL";
     const titles = { dashboard: "Dashboard", procesar: "Procesar Archivos", estadisticas: "Estadísticas", drive: "Google Drive", sheets: "Google Sheets", configuracion: "Configuración" };
     return (
         <div className="topbar">
@@ -729,7 +775,7 @@ function Topbar({ page, setPage }) {
                     <Icon d={icons.bell} size={18} />
                     <span className="notif-dot" />
                 </button>
-                <div className="avatar">JD</div>
+                <div className="avatar" title={userEmail}>{initials}</div>
             </div>
         </div>
     );
@@ -868,7 +914,7 @@ function Dashboard({ setPage }) {
 }
 
 // ── Procesar ─────────────────────────────────────────────────────────────────
-function ProcesarArchivos() {
+function ProcesarArchivos({ userId }) {
     const [drag, setDrag] = useState(false);
     const [files, setFiles] = useState([]);
     const [processing, setProcessing] = useState(null);
@@ -882,6 +928,56 @@ function ProcesarArchivos() {
         { name: "Factura_TechSolutions.jpg", items: 1, ok: 1, err: 0, fecha: "ayer 15:40", size: "1.2 MB" },
         { name: "Lote_Febrero_final.xlsx", items: 47, ok: 44, err: 3, fecha: "05/03/2026", size: "8.9 MB" },
     ];
+
+    const processWithN8n = async (file) => {
+        setProcessing({ name: file.name, progress: 10, step: "Preparando archivo..." });
+        try {
+            // Convertir a base64
+            const base64 = await new Promise((res, rej) => {
+                const r = new FileReader();
+                r.onload = () => res(r.result.split(",")[1]);
+                r.onerror = rej;
+                r.readAsDataURL(file);
+            });
+            setProcessing(p => ({ ...p, progress: 30, step: "Enviando a n8n..." }));
+
+            const webhook = import.meta.env.VITE_N8N_WEBHOOK;
+            const resp = await fetch(webhook, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_id: userId,
+                    file_base64: base64,
+                    file_name: file.name,
+                    audit_mode: true
+                })
+            });
+
+            setProcessing(p => ({ ...p, progress: 80, step: "Procesando con IA..." }));
+            const data = await resp.json();
+            setProcessing(p => ({ ...p, progress: 100, step: "¡Completado!" }));
+
+            setTimeout(() => {
+                setProcessing(null);
+                if (data.factura) {
+                    setAuditData({
+                        ncf: data.factura.ncf ?? "—",
+                        rnc: data.factura.rnc_emisor ?? "—",
+                        emisor: data.factura.emisor ?? "—",
+                        monto: data.factura.monto_total ?? "—",
+                        itbis: data.factura.itbis ?? "—",
+                        fecha: data.factura.fecha ?? "—",
+                        tipo: data.factura.tipo_ncf ?? "—",
+                        confianza: data.confianza ?? 95
+                    });
+                    setShowAudit(true);
+                }
+            }, 400);
+        } catch (err) {
+            setProcessing(null);
+            alert("Error al procesar: " + err.message);
+        }
+    };
 
     const simulateProcess = (name) => {
         setProcessing({ name, progress: 0, step: "Analizando imagen con IA..." });
@@ -905,12 +1001,12 @@ function ProcesarArchivos() {
     const handleDrop = (e) => {
         e.preventDefault(); setDrag(false);
         const f = Array.from(e.dataTransfer.files);
-        if (f.length) { setFiles(f); simulateProcess(f[0].name); }
+        if (f.length) { setFiles(f); userId ? processWithN8n(f[0]) : simulateProcess(f[0].name); }
     };
 
     const handleFile = (e) => {
         const f = Array.from(e.target.files);
-        if (f.length) { setFiles(f); simulateProcess(f[0].name); }
+        if (f.length) { setFiles(f); userId ? processWithN8n(f[0]) : simulateProcess(f[0].name); }
     };
 
     return (
@@ -1442,21 +1538,34 @@ function Configuracion() {
 
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-    const [loggedIn, setLoggedIn] = useState(false);
+    const session = useSession();
     const [page, setPage] = useState("dashboard");
 
-    const pages = { dashboard: <Dashboard setPage={setPage} />, procesar: <ProcesarArchivos />, estadisticas: <Estadisticas />, drive: <DriveView />, sheets: <SheetsView />, configuracion: <Configuracion /> };
+    // session === undefined → todavía cargando
+    if (session === undefined) {
+        return (
+            <>
+                <style>{styles}</style>
+                <div style={{ minHeight: "100vh", background: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span className="animate-spin" style={{ display: "inline-block", width: 28, height: 28, border: "3px solid rgba(59,130,246,0.2)", borderTopColor: "var(--accent)", borderRadius: "50%" }} />
+                </div>
+            </>
+        );
+    }
+
+    const userId = session?.user?.id ?? null;
+    const pages = { dashboard: <Dashboard setPage={setPage} />, procesar: <ProcesarArchivos userId={userId} />, estadisticas: <Estadisticas />, drive: <DriveView />, sheets: <SheetsView />, configuracion: <Configuracion /> };
 
     return (
         <>
             <style>{styles}</style>
-            {!loggedIn ? (
-                <LoginScreen onLogin={() => setLoggedIn(true)} />
+            {!session ? (
+                <LoginScreen />
             ) : (
                 <div className="app-layout">
-                    <Sidebar active={page} setActive={setPage} />
+                    <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} />
                     <div className="main-content">
-                        <Topbar page={page} setPage={setPage} />
+                        <Topbar page={page} setPage={setPage} userEmail={session.user.email} />
                         {pages[page]}
                     </div>
                 </div>
