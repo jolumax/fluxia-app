@@ -18,6 +18,21 @@ function useSession() {
     return session;
 }
 
+// ── Hook de créditos y plan ───────────────────────────────────────────────────
+function useCredits(userId) {
+    const [credits, setCredits] = useState(null);
+    useEffect(() => {
+        if (!userId) return;
+        supabase
+            .from("config_clientes")
+            .select("plan, creditos_usados, creditos_limite, fecha_renovacion")
+            .eq("user_id", userId)
+            .single()
+            .then(({ data }) => { if (data) setCredits(data); });
+    }, [userId]);
+    return credits;
+}
+
 // ── Icons (inline SVG components) ──────────────────────────────────────────
 const Icon = ({ d, size = 18, stroke = "currentColor", fill = "none", strokeWidth = 1.8 }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -681,7 +696,7 @@ function LoginScreen() {
     );
 }
 
-function Sidebar({ active, setActive, onLogout, userEmail }) {
+function Sidebar({ active, setActive, onLogout, userEmail, credits }) {
     const navItems = [
         { id: "dashboard", icon: icons.chart, label: "Dashboard" },
         { id: "procesar", icon: icons.upload, label: "Procesar Archivos" },
@@ -735,11 +750,19 @@ function Sidebar({ active, setActive, onLogout, userEmail }) {
                 <div style={{ background: "var(--bg-hover)", borderRadius: 10, padding: "12px", marginBottom: 10 }}>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 5 }}>CRÉDITOS DE PROCESAMIENTO</div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>237 / 500</span>
-                        <span style={{ fontSize: 11, color: "var(--accent)" }}>Plan Pro</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
+                            {credits ? `${credits.creditos_usados} / ${credits.creditos_limite === -1 ? "∞" : credits.creditos_limite}` : "— / —"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--accent)", textTransform: "capitalize" }}>
+                            {credits ? `Plan ${credits.plan}` : "Cargando..."}
+                        </span>
                     </div>
                     <div className="credits-bar">
-                        <div className="credits-fill" style={{ width: "47%" }} />
+                        <div className="credits-fill" style={{
+                            width: credits && credits.creditos_limite > 0
+                                ? `${Math.min((credits.creditos_usados / credits.creditos_limite) * 100, 100)}%`
+                                : "0%"
+                        }} />
                     </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1370,7 +1393,7 @@ function SheetsView() {
 }
 
 // ── Configuración ────────────────────────────────────────────────────────────
-function Configuracion() {
+function Configuracion({ userId, userEmail, credits }) {
     const [tab, setTab] = useState("api");
     const [show, setShow] = useState({});
 
@@ -1501,17 +1524,19 @@ function Configuracion() {
                 <div style={{ maxWidth: 500 }}>
                     <div className="card" style={{ marginBottom: 14 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-                            <div style={{ width: 56, height: 56, background: "var(--gradient)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "white" }}>JD</div>
+                            <div style={{ width: 56, height: 56, background: "var(--gradient)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: "white" }}>
+                                {userEmail ? userEmail.substring(0, 2).toUpperCase() : "FL"}
+                            </div>
                             <div>
-                                <div style={{ fontWeight: 700, fontSize: 15 }}>Juan Díaz</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>admin@fluxia.app</div>
-                                <span className="badge badge-info" style={{ fontSize: 10, marginTop: 4 }}>Plan Pro</span>
+                                <div style={{ fontWeight: 700, fontSize: 15 }}>{userEmail ? userEmail.split("@")[0] : "Usuario"}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{userEmail ?? ""}</div>
+                                <span className="badge badge-info" style={{ fontSize: 10, marginTop: 4, textTransform: "capitalize" }}>Plan {credits?.plan ?? "—"}</span>
                             </div>
                         </div>
-                        {[["Nombre completo", "Juan Díaz"], ["Email", "admin@fluxia.app"], ["RNC empresa", "130-12345-6"], ["Empresa", "Contabilidad Díaz & Asoc."]].map(([l, v]) => (
+                        {[["Email", userEmail ?? ""], ["Plan", credits?.plan ?? "—"]].map(([l, v]) => (
                             <div key={l} style={{ marginBottom: 12 }}>
                                 <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>{l.toUpperCase()}</label>
-                                <input className="input-field" defaultValue={v} style={{ fontSize: 13 }} />
+                                <input className="input-field" defaultValue={v} style={{ fontSize: 13 }} readOnly />
                             </div>
                         ))}
                         <button className="btn-primary" style={{ marginTop: 4 }}>Actualizar perfil</button>
@@ -1519,10 +1544,15 @@ function Configuracion() {
                     <div className="card">
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Tu Plan</div>
                         <div style={{ background: "var(--gradient)", borderRadius: 12, padding: "16px 18px", marginBottom: 14 }}>
-                            <div style={{ fontWeight: 800, fontSize: 18, color: "white", marginBottom: 2 }}>Pro</div>
-                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>500 créditos/mes · Hasta 3 usuarios · Exportación 606</div>
+                            <div style={{ fontWeight: 800, fontSize: 18, color: "white", marginBottom: 2, textTransform: "capitalize" }}>{credits?.plan ?? "—"}</div>
+                            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+                                {credits?.creditos_limite === -1 ? "Créditos ilimitados" : `${credits?.creditos_limite ?? "—"} créditos/mes`}
+                            </div>
                         </div>
-                        {[["Créditos usados", "237 / 500", "var(--accent)"], ["Usuarios activos", "2 / 3", "var(--success)"], ["Renovación", "01/04/2026", "var(--text-secondary)"]].map(([k, v, c]) => (
+                        {[
+                            ["Créditos usados", credits ? `${credits.creditos_usados} / ${credits.creditos_limite === -1 ? "∞" : credits.creditos_limite}` : "—", "var(--accent)"],
+                            ["Renovación", credits?.fecha_renovacion ? new Date(credits.fecha_renovacion).toLocaleDateString("es-DO") : "—", "var(--text-secondary)"]
+                        ].map(([k, v, c]) => (
                             <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
                                 <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{k}</span>
                                 <span style={{ fontSize: 13, fontWeight: 600, color: c }}>{v}</span>
@@ -1554,7 +1584,8 @@ export default function App() {
     }
 
     const userId = session?.user?.id ?? null;
-    const pages = { dashboard: <Dashboard setPage={setPage} />, procesar: <ProcesarArchivos userId={userId} />, estadisticas: <Estadisticas />, drive: <DriveView />, sheets: <SheetsView />, configuracion: <Configuracion /> };
+    const credits = useCredits(userId);
+    const pages = { dashboard: <Dashboard setPage={setPage} />, procesar: <ProcesarArchivos userId={userId} />, estadisticas: <Estadisticas />, drive: <DriveView />, sheets: <SheetsView />, configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} /> };
 
     return (
         <>
@@ -1563,7 +1594,7 @@ export default function App() {
                 <LoginScreen />
             ) : (
                 <div className="app-layout">
-                    <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} />
+                    <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} credits={credits} />
                     <div className="main-content">
                         <Topbar page={page} setPage={setPage} userEmail={session.user.email} />
                         {pages[page]}
