@@ -1119,15 +1119,9 @@ function ProcesarArchivos({ userId }) {
                                 ["Auditoría humana previa", true],
                                 ["Guardar en Google Drive", true],
                                 ["Actualizar Google Sheets", false],
-                            ].map(([label, def]) => {
-                                const [on, setOn] = useState(def);
-                                return (
-                                    <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                                        <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
-                                        <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
-                                    </div>
-                                );
-                            })}
+                            ].map(([label, def]) => (
+                                <OpcionToggle key={label} label={label} def={def} />
+                            ))}
                         </div>
                         <div className="card">
                             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Destino de guardado</div>
@@ -1388,6 +1382,16 @@ function SheetsView() {
                     </div>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function OpcionToggle({ label, def }) {
+    const [on, setOn] = useState(def);
+    return (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
+            <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
         </div>
     );
 }
