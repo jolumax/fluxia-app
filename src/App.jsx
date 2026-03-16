@@ -681,7 +681,7 @@ function LoginScreen() {
     );
 }
 
-function Sidebar({ active, setActive, onLogout }) {
+function Sidebar({ active, setActive, onLogout, userEmail }) {
     const navItems = [
         { id: "dashboard", icon: icons.chart, label: "Dashboard" },
         { id: "procesar", icon: icons.upload, label: "Procesar Archivos" },
@@ -743,10 +743,10 @@ function Sidebar({ active, setActive, onLogout }) {
                     </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div className="avatar">JD</div>
+                    <div className="avatar">{userEmail ? userEmail.substring(0, 2).toUpperCase() : "FL"}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Juan Díaz</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>admin@fluxia.app</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userEmail ? userEmail.split("@")[0] : "Usuario"}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{userEmail ?? ""}</div>
                     </div>
                     <button className="btn-ghost" style={{ padding: 6 }} title="Cerrar sesión" onClick={onLogout}>
                         <Icon d={icons.logout} size={15} />
@@ -1563,7 +1563,7 @@ export default function App() {
                 <LoginScreen />
             ) : (
                 <div className="app-layout">
-                    <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} />
+                    <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} />
                     <div className="main-content">
                         <Topbar page={page} setPage={setPage} userEmail={session.user.email} />
                         {pages[page]}
