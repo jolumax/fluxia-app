@@ -982,15 +982,17 @@ function ProcesarArchivos({ userId }) {
 
             setTimeout(() => {
                 setProcessing(null);
-                if (data.factura) {
+                // n8n devuelve { status, request_id, invoice: { emisor, ncf, ... } }
+                const inv = data.invoice ?? data.factura ?? null;
+                if (inv) {
                     setAuditData({
-                        ncf: data.factura.ncf ?? "—",
-                        rnc: data.factura.rnc_emisor ?? "—",
-                        emisor: data.factura.emisor ?? "—",
-                        monto: data.factura.monto_total ?? "—",
-                        itbis: data.factura.itbis ?? "—",
-                        fecha: data.factura.fecha ?? "—",
-                        tipo: data.factura.tipo_ncf ?? "—",
+                        ncf:       inv.ncf               ?? "—",
+                        rnc:       inv.id_fiscal_emisor  ?? inv.rnc_emisor ?? "—",
+                        emisor:    inv.emisor             ?? "—",
+                        monto:     inv.total              ?? inv.monto_total ?? "—",
+                        itbis:     inv.itbis              ?? "—",
+                        fecha:     inv.fecha_emision      ?? inv.fecha ?? "—",
+                        tipo:      inv.ncf_validacion?.tipo_nombre ?? inv.tipo_ncf ?? "—",
                         confianza: data.confianza ?? 95
                     });
                     setShowAudit(true);
