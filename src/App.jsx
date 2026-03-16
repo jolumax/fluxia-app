@@ -1392,6 +1392,32 @@ function SheetsView() {
     );
 }
 
+function NotifCanal({ label, icon, placeholder, enabled }) {
+    const [on, setOn] = useState(enabled);
+    return (
+        <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Icon d={icon} size={15} stroke="var(--text-secondary)" />
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{label}</span>
+                </div>
+                <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
+            </div>
+            {on && <input className="input-field" placeholder={placeholder} style={{ fontSize: 13 }} />}
+        </div>
+    );
+}
+
+function AlertaToggle({ label }) {
+    const [on, setOn] = useState(true);
+    return (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
+            <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
+        </div>
+    );
+}
+
 // ── Configuración ────────────────────────────────────────────────────────────
 function Configuracion({ userId, userEmail, credits }) {
     const [tab, setTab] = useState("api");
@@ -1451,32 +1477,14 @@ function Configuracion({ userId, userEmail, credits }) {
                             { label: "Telegram", icon: icons.telegram, placeholder: "@mi_bot_token", enabled: true },
                             { label: "WhatsApp (número)", icon: icons.bell, placeholder: "+1 809 000 0000", enabled: false },
                             { label: "Email de alertas", icon: icons.inbox, placeholder: "alertas@empresa.com", enabled: true },
-                        ].map(({ label, icon, placeholder, enabled }) => {
-                            const [on, setOn] = useState(enabled);
-                            return (
-                                <div key={label} style={{ marginBottom: 18 }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <Icon d={icon} size={15} stroke="var(--text-secondary)" />
-                                            <span style={{ fontWeight: 600, fontSize: 13 }}>{label}</span>
-                                        </div>
-                                        <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
-                                    </div>
-                                    {on && <input className="input-field" placeholder={placeholder} style={{ fontSize: 13 }} />}
-                                </div>
-                            );
-                        })}
+                        ].map(({ label, icon, placeholder, enabled }) => (
+                            <NotifCanal key={label} label={label} icon={icon} placeholder={placeholder} enabled={enabled} />
+                        ))}
                         <div className="divider" />
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Alertas activas</div>
-                        {["Factura con error DGII", "Duplicado detectado", "Carga completada", "Créditos por agotarse"].map(a => {
-                            const [on, setOn] = useState(true);
-                            return (
-                                <div key={a} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{a}</span>
-                                    <button className={`toggle ${on ? "on" : ""}`} onClick={() => setOn(!on)} />
-                                </div>
-                            );
-                        })}
+                        {["Factura con error DGII", "Duplicado detectado", "Carga completada", "Créditos por agotarse"].map(a => (
+                            <AlertaToggle key={a} label={a} />
+                        ))}
                         <button className="btn-primary" style={{ marginTop: 8 }}>Guardar configuración</button>
                     </div>
                 </div>
