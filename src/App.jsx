@@ -1582,6 +1582,8 @@ function Configuracion({ userId, userEmail, credits }) {
 export default function App() {
     const session = useSession();
     const [page, setPage] = useState("dashboard");
+    const userId = session?.user?.id ?? null;
+    const credits = useCredits(userId); // ← siempre antes de cualquier return
 
     // session === undefined → todavía cargando
     if (session === undefined) {
@@ -1595,8 +1597,6 @@ export default function App() {
         );
     }
 
-    const userId = session?.user?.id ?? null;
-    const credits = useCredits(userId);
     const pages = { dashboard: <Dashboard setPage={setPage} />, procesar: <ProcesarArchivos userId={userId} />, estadisticas: <Estadisticas />, drive: <DriveView />, sheets: <SheetsView />, configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} /> };
 
     return (
