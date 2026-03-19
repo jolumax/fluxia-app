@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ── Supabase client ───────────────────────────────────────────────────────────
@@ -18,6 +18,29 @@ function useSession() {
     return session;
 }
 
+// ── Hook de Clientes ─────────────────────────────────────────────────────────
+function useClients(userId) {
+    const [clients, setClients] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [reload, setReload] = useState(0);
+
+    const reloadClients = () => setReload(r => r + 1);
+
+    useEffect(() => {
+        if (!userId) return;
+        supabase
+            .from("config_clientes_multi") // Tabla para clientes del contador
+            .select("*")
+            .eq("user_id", userId)
+            .then(({ data, error }) => {
+                if (data) setClients(data);
+                setLoading(false);
+            });
+    }, [userId, reload]);
+
+    return { clients, setClients, loading, reloadClients };
+}
+
 // ── Hook de créditos y plan ───────────────────────────────────────────────────
 function useCredits(userId) {
     const [credits, setCredits] = useState(undefined); // undefined = cargando, null = no existe (onboarding)
@@ -27,15 +50,38 @@ function useCredits(userId) {
 
     useEffect(() => {
         if (!userId) return;
-        supabase
-            .from("config_clientes")
-            .select("plan, creditos_usados, creditos_limite, fecha_renovacion")
-            .eq("user_id", userId)
-            .single()
-            .then(({ data, error }) => {
-                if (data) setCredits(data);
-                else setCredits(null); // No tiene config -> necesita onboarding
-            });
+
+        async function loadConfig() {
+            try {
+                // 1. Cargar config básica
+                const { data: config, error: configErr } = await supabase
+                    .from("config_clientes")
+                    .select("*")
+                    .eq("user_id", userId)
+                    .single();
+
+                if (configErr && configErr.code !== 'PGRST116') throw configErr;
+                if (!config) { setCredits(null); return; }
+
+                // 2. Cargar datos del usuario (RNC)
+                const { data: user, error: userErr } = await supabase
+                    .from("usuarios")
+                    .select("rnc_empresa")
+                    .eq("id", userId)
+                    .single();
+
+                setCredits({
+                    ...config,
+                    rnc: user?.rnc_empresa || ""
+                });
+
+            } catch (err) {
+                console.error("❌ Error cargando configuración/usuario:", err);
+                setCredits(null);
+            }
+        }
+
+        loadConfig();
     }, [userId, reload]);
     return { credits, setCredits, reloadCredits };
 }
@@ -44,6 +90,9 @@ function useCredits(userId) {
 function useAirtableInvoices(userId, credits) {
     const [invoices, setInvoices] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [reload, setReload] = useState(0);
+
+    const reloadInvoices = () => setReload(r => r + 1);
 
     useEffect(() => {
         if (!userId || !credits) {
@@ -54,35 +103,41 @@ function useAirtableInvoices(userId, credits) {
         const fetchAirtable = async () => {
             try {
                 const token = import.meta.env.VITE_AIRTABLE_TOKEN;
-                if (!token) { setLoading(false); return; } // Usar defaults
-                
+                if (!token) { setLoading(false); return; }
+
                 const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
                 const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
-                const formula = `({user_id} = '${userId}')`;
-                const url = `https://api.airtable.com/v0/${baseId}/${tableId}?filterByFormula=${encodeURIComponent(formula)}&sort[0][field]=Fecha%20de%20Factura%20(fecha)&sort[0][direction]=desc&maxRecords=50`;
 
-                const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                // Intentar filtrar por user_id. Si falla, el hook atrapará el error.
+                const formula = `({user_id} = '${userId}')`;
+                const url = `https://api.airtable.com/v0/${baseId}/${tableId}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=100`;
+
+                const res = await fetch(url, { 
+                    headers: { Authorization: `Bearer ${token}` },
+                    cache: 'no-store' 
+                });
                 const data = await res.json();
-                
+
                 if (data.records) {
-                    const mapped = data.records.map(r => ({
-                        id: r.fields.request_id || r.id.substring(0,8),
-                        emisor: r.fields.Emisor || "Desconocido",
-                        rnc: r.fields["ID Fiscal"] || r.fields["ID Fiscal (id_fiscal)"] || "—",
-                        ncf: r.fields.ncf || "—",
-                        monto: r.fields.Total ? `RD$${r.fields.Total.toLocaleString("es-DO")}` : "—",
-                        itbis: r.fields.ITBIS ? `RD$${r.fields.ITBIS.toLocaleString("es-DO")}` : "—",
-                        fecha: r.fields["Fecha de Factura"] || r.fields["Fecha de Factura (fecha)"] || "—",
-                        estado: r.fields.status === "duplicate" ? "duplicado" : (r.fields["NCF Válido"] || r.fields["NCF Válido (ncf_valido)"] ? "valido" : "error"),
-                        credito: r.fields["Tipo de NCF"] || r.fields["Tipo de NCF (ncf_tipo)"] ? (r.fields["Tipo de NCF"] || r.fields["Tipo de NCF (ncf_tipo)"]).substring(0,3) : "B01",
-                        driveFileId: r.fields["Archivo de Factura (drive_file_id)"] ||
-                                     r.fields["drive_file_id"] ||
-                                     r.fields["Archivo de Factura"] ||
-                                     r.fields["file_id"] ||
-                                     r.fields["factura_drive_id"] ||
-                                     null,
-                        concepto: r.fields.Concepto || "—"
-                    }));
+                    const mapped = data.records.map(r => {
+                        const f = r.fields;
+                        return {
+                            id: f.request_id || r.id.substring(0, 8),
+                            emisor: f.Emisor || f.Nombre_Emisor || "Desconocido",
+                            rnc: f["ID Fiscal"] || f["RNC Emisor"] || f.rnc || "—",
+                            ncf: f.ncf || f.NCF || "—",
+                            monto: f.Total ? `RD$${f.Total.toLocaleString("es-DO")}` : (f.monto_total ? `RD$${f.monto_total.toLocaleString("es-DO")}` : "—"),
+                            itbis: f.ITBIS ? `RD$${f.ITBIS.toLocaleString("es-DO")}` : "—",
+                            fecha: f["Fecha de Factura"] || f.fecha || f.fecha_emision || "—",
+                            estado: f.status === "duplicate" ? "duplicado" : (f["NCF Válido"] || f.ncf_valido ? "valido" : "error"),
+                            credito: f["Tipo de NCF"] || f.tipo_ncf ? (f["Tipo de NCF"] || f.tipo_ncf).substring(0, 3) : "B01",
+                            driveFileId: f.drive_file_id || f.file_id || null,
+                            concepto: f.Concepto || "—",
+                            // Campo clave para vincular con el cliente seleccionado
+                            rnc_empresa: (f.rnc_empresa || f["RNC Empresa"] || f.empresa_rnc || "").toString().replace(/[^0-9]/g, ''),
+                            airtableId: r.id
+                        };
+                    });
                     setInvoices(mapped);
                 }
             } catch (err) {
@@ -91,9 +146,9 @@ function useAirtableInvoices(userId, credits) {
             setLoading(false);
         };
         fetchAirtable();
-    }, [userId, credits]);
+    }, [userId, credits, reload]);
 
-    return { invoices, loading };
+    return { invoices, loading, reloadInvoices };
 }
 
 // ── Icons (inline SVG components) ──────────────────────────────────────────
@@ -134,6 +189,7 @@ const icons = {
     layers: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
     arrow_right: "M5 12h14M12 5l7 7-7 7",
     chevron_down: "M6 9l6 6 6-6",
+    trash: "M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6",
 };
 
 // ── Color palette & styles ──────────────────────────────────────────────────
@@ -362,9 +418,16 @@ const styles = `
   }
 
   .page-content {
-    padding: 28px;
+    padding: 28px 40px;
     flex: 1;
     overflow-y: auto;
+    max-width: 1100px;
+    margin: 0 auto;
+    width: 100%;
+    transition: all 0.3s ease;
+  }
+  @media (max-width: 768px) {
+    .page-content { padding: 20px; }
   }
 
   /* Cards */
@@ -620,6 +683,38 @@ const styles = `
     .sidebar { transform: translateX(-100%); }
     .main-content { margin-left: 0; }
   }
+
+  /* Clientes Premium UI */
+  .client-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 1px solid var(--border) !important;
+    cursor: default;
+  }
+  .client-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent) !important;
+    box-shadow: 0 12px 30px -10px rgba(0,0,0,0.5), 0 0 20px -5px var(--accent-glow);
+  }
+  .client-card .delete-btn {
+    transition: all 0.2s;
+  }
+  .client-card:hover .delete-btn {
+    opacity: 1 !important;
+  }
+  .client-card .delete-btn:hover {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: var(--danger) !important;
+  }
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(21, 29, 46, 0.8) !important;
+  }
+  
+  @keyframes slide-down {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 `;
 
 // ── Data ────────────────────────────────────────────────────────────────────
@@ -763,6 +858,7 @@ function Sidebar({ active, setActive, onLogout, userEmail, credits }) {
     const navItems = [
         { id: "dashboard", icon: icons.chart, label: "Dashboard" },
         { id: "procesar", icon: icons.upload, label: "Procesar Archivos" },
+        { id: "clientes", icon: icons.user, label: "Mis Clientes" },
         { id: "estadisticas", icon: icons.trending, label: "Estadísticas" },
     ];
     const sourceItems = [
@@ -843,13 +939,13 @@ function Sidebar({ active, setActive, onLogout, userEmail, credits }) {
     );
 }
 
-function Topbar({ page, setPage, userEmail, invoices, onSearch }) {
+function Topbar({ page, setPage, userEmail, invoices, onSearch, clients, selectedClient, setSelectedClient }) {
     const initials = userEmail ? userEmail.substring(0, 2).toUpperCase() : "FL";
     const titles = { dashboard: "Dashboard", procesar: "Procesar Archivos", estadisticas: "Estadísticas", drive: "Google Drive", sheets: "Google Sheets", configuracion: "Configuración" };
     const [showNotif, setShowNotif] = useState(false);
     const now = new Date();
-    const dias = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-    const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
     const fechaHoy = `${dias[now.getDay()]}, ${now.getDate()} de ${meses[now.getMonth()]} de ${now.getFullYear()}`;
     return (
         <div className="topbar">
@@ -857,7 +953,33 @@ function Topbar({ page, setPage, userEmail, invoices, onSearch }) {
                 <h1 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{titles[page] || "Fluxia"}</h1>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{fechaHoy}</div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {/* Selector de Cliente */}
+                <div style={{ position: "relative", minWidth: 220 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, letterSpacing: 0.5 }}>CLIENTE / EMPRESA ACTIVA</div>
+                    <div style={{ position: "relative" }}>
+                        <select
+                            className="input-field"
+                            style={{ padding: "6px 34px 6px 12px", fontSize: 12, height: 36, background: "var(--bg-card)", borderColor: selectedClient ? "var(--accent)" : "var(--border)" }}
+                            value={selectedClient?.id || ""}
+                            onChange={(e) => {
+                                const client = clients.find(c => c.id === e.target.value);
+                                setSelectedClient(client || null);
+                            }}
+                        >
+                            <option value="">(Tú) {userEmail?.split("@")[0]}</option>
+                            {clients.map(c => (
+                                <option key={c.id} value={c.id}>{c.nombre} ({c.rnc})</option>
+                            ))}
+                        </select>
+                        <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: "var(--text-muted)" }}>
+                            <Icon d={icons.chevron_down} size={12} />
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ width: 1, height: 30, background: "var(--border)", margin: "0 4px" }} />
+
                 <div style={{ position: "relative", display: "flex" }}>
                     <input className="input-field" placeholder="Buscar facturas, NCF..." style={{ width: 220, padding: "8px 14px 8px 34px", fontSize: 12 }}
                         onChange={e => onSearch && onSearch(e.target.value)} />
@@ -870,7 +992,12 @@ function Topbar({ page, setPage, userEmail, invoices, onSearch }) {
                     </button>
                     {showNotif && (
                         <div style={{ position: "absolute", right: 0, top: 40, width: 280, background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 12, padding: 14, zIndex: 200, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Notificaciones</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                <div style={{ fontWeight: 700, fontSize: 13 }}>Notificaciones</div>
+                                <button className="btn-ghost" style={{ padding: 4, borderRadius: "50%" }} onClick={() => setShowNotif(false)}>
+                                    <Icon d={icons.x} size={14} />
+                                </button>
+                            </div>
                             {(invoices || []).length === 0 ? (
                                 <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>Sin notificaciones nuevas</div>
                             ) : (invoices || []).slice(0, 3).map((inv, i) => (
@@ -907,25 +1034,25 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
         try {
             // Guardar usuario config en supabase
             const limits = { basic: 100, pro: 500, premium: -1 };
-            
-            const res1 = await supabase.from("usuarios").upsert([{ 
-                id: userId, 
-                email: userEmail, 
-                nombre: formData.empresa, 
-                rol: "admin", 
-                activo: true 
+
+            const res1 = await supabase.from("usuarios").upsert([{
+                id: userId,
+                email: userEmail,
+                nombre: formData.empresa,
+                rol: "admin",
+                activo: true
             }]);
             if (res1.error) throw new Error("Error en usuarios: " + res1.error.message);
-            
-            const res2 = await supabase.from("config_clientes").upsert([{ 
+
+            const res2 = await supabase.from("config_clientes").upsert([{
                 user_id: userId,
                 plan: formData.plan,
                 creditos_usados: 0,
                 creditos_limite: limits[formData.plan],
-                fecha_renovacion: new Date(Date.now() + 30*24*60*60*1000).toISOString()
+                fecha_renovacion: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
             }], { onConflict: 'user_id' });
             if (res2.error) throw new Error("Error en config_clientes: " + (res2.error.message || JSON.stringify(res2.error)));
-            
+
             // Redirect to Stripe or Complete Onboarding
             const stripeLink = checkouts[formData.plan];
             if (stripeLink) {
@@ -933,7 +1060,7 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
             } else {
                 reloadCredits();
             }
-        } catch(e) {
+        } catch (e) {
             console.error(e);
             alert("Error: " + e.message);
         }
@@ -946,16 +1073,16 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
                 <Icon d={icons.layers} size={40} stroke="var(--accent)" />
                 <h2 className="font-display" style={{ fontSize: 24, marginTop: 16 }}>Bienvenido a Fluxia</h2>
                 <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Configuraremos tu cuenta en unos pasos rápidos.</div>
-                
+
                 {step === 1 && (
                     <div style={{ textAlign: "left" }}>
                         <div style={{ marginBottom: 16 }}>
                             <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>NOMBRE DE LA EMPRESA *</label>
-                            <input className="input-field" value={formData.empresa} onChange={e => setFormData({...formData, empresa: e.target.value})} placeholder="Ej. Inversiones DR" />
+                            <input className="input-field" value={formData.empresa} onChange={e => setFormData({ ...formData, empresa: e.target.value })} placeholder="Ej. Inversiones DR" />
                         </div>
                         <div style={{ marginBottom: 20 }}>
                             <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>RNC DE LA EMPRESA (Opcional)</label>
-                            <input className="input-field" value={formData.rnc} onChange={e => setFormData({...formData, rnc: e.target.value})} placeholder="101-12345-6" />
+                            <input className="input-field" value={formData.rnc} onChange={e => setFormData({ ...formData, rnc: e.target.value })} placeholder="101-12345-6" />
                         </div>
                         <button className="btn-primary" disabled={!formData.empresa} onClick={() => setStep(2)}>Siguiente paso →</button>
                     </div>
@@ -969,7 +1096,7 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
                                 { id: "pro", t: "Pro", desc: "500 facturas", price: "$47/mes" },
                                 { id: "premium", t: "Premium", desc: "Ilimitado", price: "$103/mes" }
                             ].map(p => (
-                                <div key={p.id} onClick={() => setFormData({...formData, plan: p.id})} style={{ padding: "16px", borderRadius: 12, border: `2px solid ${formData.plan === p.id ? "var(--accent)" : "var(--border)"}`, background: formData.plan === p.id ? "var(--accent-glow)" : "var(--bg-surface)", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6 }}>
+                                <div key={p.id} onClick={() => setFormData({ ...formData, plan: p.id })} style={{ padding: "16px", borderRadius: 12, border: `2px solid ${formData.plan === p.id ? "var(--accent)" : "var(--border)"}`, background: formData.plan === p.id ? "var(--accent-glow)" : "var(--bg-surface)", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6 }}>
                                     <div style={{ fontWeight: 700, fontSize: 14 }}>{p.t}</div>
                                     <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>{p.price}</div>
                                     <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.desc}</div>
@@ -989,13 +1116,13 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
 // ── Helpers Export 606 (N8N Automated & Local Fallback) ──────────────────────
 async function export606Official(invoices, userRNC = "101863567", period = null, userId = null) {
     if (!invoices || invoices.length === 0) { alert("No hay facturas para exportar."); return; }
-    
+
     // Si no viene periodo, calcular el mes actual (AAAAMM)
     if (!period) {
         const d = new Date();
         period = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
     }
-    
+
     // 1. Intentar Exportación Automatizada via n8n
     const n8nWebhook = import.meta.env.VITE_N8N_WEBHOOK?.replace("procesar-factura", "exportar-606");
     if (n8nWebhook) {
@@ -1048,7 +1175,7 @@ async function export606Official(invoices, userRNC = "101863567", period = null,
         const cleanNCF = (inv.ncf || "").replace(/\s/g, "");
         const montoNum = parseFloat((inv.monto || "0").replace(/[^0-9.]/g, "")) || 0;
         const itbisNum = parseFloat((inv.itbis || "0").replace(/[^0-9.]/g, "")) || 0;
-        
+
         let fComp = "20260316";
         if (inv.fecha && inv.fecha.includes("/")) {
             const p = inv.fecha.split("/");
@@ -1121,7 +1248,7 @@ async function export606Official(invoices, userRNC = "101863567", period = null,
                 <tr><td colspan="23" style="height: 10px; border: none;"></td></tr>
 
                 <tr style="background: #1e3a8a; color: white; height: 25px;">
-                    ${headers.map((h, i) => `<td class="dgii-blue">${i+1}</td>`).join("")}
+                    ${headers.map((h, i) => `<td class="dgii-blue">${i + 1}</td>`).join("")}
                 </tr>
                 <tr style="background: #1e3a8a; color: white; height: 45px;">
                     ${headers.map(h => `<td class="dgii-blue" style="vertical-align:middle">${h}</td>`).join("")}
@@ -1145,8 +1272,8 @@ function exportXLS(invoices, title) {
     if (!invoices || invoices.length === 0) { alert("No hay datos para exportar."); return; }
     const now = new Date().toLocaleDateString("es-DO");
     const rows = invoices.map((inv, i) => `
-        <tr style="background:${i%2===0?'#f8faff':'#ffffff'}">
-            <td>${i+1}</td>
+        <tr style="background:${i % 2 === 0 ? '#f8faff' : '#ffffff'}">
+            <td>${i + 1}</td>
             <td>${inv.emisor}</td>
             <td>${inv.rnc}</td>
             <td>${inv.ncf}</td>
@@ -1181,12 +1308,13 @@ function exportXLS(invoices, title) {
         </body></html>`;
     const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `Reporte_606_Fluxia_${title.replace(/\s/g,'_')}.xls`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `Reporte_606_Fluxia_${title.replace(/\s/g, '_')}.xls`; a.click();
     URL.revokeObjectURL(url);
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
-function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits }) {
+function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits, selectedClient, userConfig }) {
+    // displayInvoices ya viene filtrado por selectedClient desde App — solo filtrar por búsqueda
     const invData = (invoices || []).filter(inv => {
         if (!searchTerm || searchTerm.trim() === "") return true;
         const q = searchTerm.toLowerCase().trim();
@@ -1202,10 +1330,10 @@ function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits
     });
     const validas = invData.filter(i => i.estado === "valido").length;
     const errores = invData.filter(i => i.estado === "error").length;
-    
+
     const kpis = [
         { label: "Facturas totales", value: invData.length.toString(), delta: "Historico", color: "var(--accent)", icon: icons.file },
-        { label: "Procesadas OK", value: validas.toString(), delta: invData.length ? `${Math.round((validas/invData.length)*100)}%` : "0%", color: "var(--success)", icon: icons.check },
+        { label: "Procesadas OK", value: validas.toString(), delta: invData.length ? `${Math.round((validas / invData.length) * 100)}%` : "0%", color: "var(--success)", icon: icons.check },
         { label: "Con errores", value: errores.toString(), delta: "Requieren rev.", color: "var(--danger)", icon: icons.alert },
         { label: "Ahorro estimado (h)", value: (invData.length * 0.15).toFixed(1) + "h", delta: "Todo el tiempo", color: "var(--accent2)", icon: icons.zap },
     ];
@@ -1216,6 +1344,24 @@ function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits
 
     return (
         <div className="page-content fade-in">
+            {/* Header Dashboard */}
+            <div style={{ marginBottom: 32 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--accent)", marginBottom: 4, fontSize: 13, fontWeight: 700, letterSpacing: 0.5 }}>
+                    <Icon d={icons.dashboard} size={14} /> PANEL DE CONTROL
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                    <div>
+                        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: -0.5, color: "var(--text-primary)" }}>
+                            {selectedClient ? selectedClient.nombre : "Visión General"}
+                        </h1>
+                        <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 4 }}>
+                            {selectedClient ? `Gestionando facturación de ${selectedClient.rnc}` : "Resumen del rendimiento y automatización de procesos."}
+                        </p>
+                    </div>
+                    {/* Optional: Add a date or action here */}
+                </div>
+            </div>
+
             {/* KPIs */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginBottom: 24 }}>
                 {kpis.map((k, i) => (
@@ -1272,7 +1418,7 @@ function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits
                                         <div style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
                                         <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l}</span>
                                     </div>
-                                    <span style={{ fontSize: 12, fontWeight: 600, color: c }}>{v} ({invData.length ? Math.round((v/invData.length)*100) : 0}%)</span>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: c }}>{v} ({invData.length ? Math.round((v / invData.length) * 100) : 0}%)</span>
                                 </div>
                             ))}
                         </div>
@@ -1299,9 +1445,14 @@ function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>Facturas Recientes</div>
                     <div style={{ display: "flex", gap: 8 }}>
-                        <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 5 }} 
-                            onClick={() => export606Official(invData, credits?.rnc || "101863567", null, userId)}>
+                        <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
+                            onClick={() => export606Official(invData, selectedClient?.rnc || credits?.rnc || "101863567", null, userId)}>
                             <Icon d={icons.download} size={13} />Exportar Formato 606
+                        </button>
+                        <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
+                            onClick={() => { if (typeof window !== "undefined") window.location.reload(); }}
+                            title="Recargar datos desde Airtable">
+                            <Icon d={icons.refresh} size={13} />Actualizar
                         </button>
                         <button className="btn-primary" style={{ fontSize: 12, padding: "7px 14px", width: "auto" }} onClick={() => setPage("procesar")}>
                             + Nueva carga
@@ -1341,19 +1492,27 @@ function Dashboard({ userId, setPage, invoices, dataLoading, searchTerm, credits
 }
 
 // ── Procesar ─────────────────────────────────────────────────────────────────
-function ProcesarArchivos({ userId, invoices }) {
+function ProcesarArchivos({ userId, invoices, selectedClient, reloadInvoices, credits }) {
     const [drag, setDrag] = useState(false);
     const [files, setFiles] = useState([]);
     const [processing, setProcessing] = useState(null);
     const [showAudit, setShowAudit] = useState(false);
     const [auditData, setAuditData] = useState(null);
     const [tab, setTab] = useState("cargar");
+    const [loading, setLoading] = useState(false);
     const fileRef = useRef();
 
     const DRIVE_FOLDER_ID = "1PgkAJbmqkxm8hYgWhGal_kwR-_vaFVmL";
 
+    const resetUpload = () => {
+        setShowAudit(false);
+        setAuditData(null);
+        setFiles([]);
+        if (fileRef.current) fileRef.current.value = "";
+    };
+
     const historial = (invoices || []).map((inv, i) => ({
-        name: `Factura_${(inv.emisor || inv.id).replace(/\s+/g,'_')}.pdf`,
+        name: `Factura_${(inv.emisor || inv.id).replace(/\s+/g, '_')}.pdf`,
         items: 1,
         ok: inv.estado === "valido" ? 1 : 0,
         err: inv.estado !== "valido" ? 1 : 0,
@@ -1362,55 +1521,143 @@ function ProcesarArchivos({ userId, invoices }) {
         driveFileId: inv.driveFileId || null
     }));
 
+    // Elimina el registro de Airtable si el usuario rechaza la auditoría
+    // Busca por request_id si existe, o por el último registro del user_id (el más reciente)
+    const deleteAirtableRecord = async (requestId, fallbackNcf) => {
+        try {
+            const token = import.meta.env.VITE_AIRTABLE_TOKEN;
+            if (!token) {
+                console.warn("VITE_AIRTABLE_TOKEN no configurado — no se puede eliminar de Airtable");
+                return;
+            }
+            const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
+            const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
+
+            let formula = "";
+            if (requestId) {
+                formula = `({request_id}='${requestId}')`;
+            } else if (fallbackNcf && userId) {
+                // Fallback: buscar por NCF + user_id (el registro recién creado)
+                formula = `AND({ncf}='${fallbackNcf}',{user_id}='${userId}')`;
+            } else {
+                console.warn("Sin request_id ni NCF para buscar — no se puede eliminar");
+                return;
+            }
+
+            const searchUrl = `https://api.airtable.com/v0/${baseId}/${tableId}?filterByFormula=${encodeURIComponent(formula)}&sort[0][field]=Procesado%20en%20(procesado_en)&sort[0][direction]=desc&maxRecords=1`;
+            const res = await fetch(searchUrl, { headers: { Authorization: `Bearer ${token}` } });
+            const data = await res.json();
+
+            if (data.records?.length > 0) {
+                const recordId = data.records[0].id;
+                const delRes = await fetch(`https://api.airtable.com/v0/${baseId}/${tableId}/${recordId}`, {
+                    method: "DELETE",
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (delRes.ok) {
+                    console.log("🗑️ Registro eliminado de Airtable:", recordId);
+                    if (reloadInvoices) setTimeout(() => reloadInvoices(), 1000);
+                } else {
+                    console.warn("Error al eliminar:", await delRes.text());
+                }
+            } else {
+                console.warn("No se encontró registro en Airtable para eliminar");
+            }
+        } catch (err) {
+            console.warn("No se pudo eliminar de Airtable:", err.message);
+        }
+    };
+
     const processWithN8n = async (file) => {
         setProcessing({ name: file.name, progress: 10, step: "Preparando archivo..." });
         try {
-            // Convertir a base64
-            const base64 = await new Promise((res, rej) => {
+            // Base64 limpio (sin prefijo) para tu nodo de n8n
+            const base64Raw = await new Promise((res, rej) => {
                 const r = new FileReader();
                 r.onload = () => res(r.result.split(",")[1]);
                 r.onerror = rej;
                 r.readAsDataURL(file);
             });
+
+            const payload = {
+                user_id: userId,
+                file_base64: base64Raw,
+                file_name: file.name,
+                audit_mode: true,
+                rnc_empresa: selectedClient?.rnc || "",
+                drive_folder_id: selectedClient?.drive_folder_id || credits?.folder_drive_id || ""
+            };
+
+            console.log("🚀 Enviando a n8n:", { ...payload, file_base64: "DATA_LAAAAARGA..." });
             setProcessing(p => ({ ...p, progress: 30, step: "Enviando a n8n..." }));
 
             const webhook = import.meta.env.VITE_N8N_WEBHOOK;
             const resp = await fetch(webhook, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user_id: userId,
-                    file_base64: base64,
-                    file_name: file.name,
-                    audit_mode: true
-                })
+                body: JSON.stringify(payload)
             });
 
-            setProcessing(p => ({ ...p, progress: 80, step: "Procesando con IA..." }));
-            const data = await resp.json();
-            setProcessing(p => ({ ...p, progress: 100, step: "¡Completado!" }));
+            if (!resp.ok) {
+                const errorText = await resp.text();
+                console.error("❌ Error crudo de n8n:", errorText);
+                let cleanMsg = "Error en el flujo de n8n";
+                try {
+                    const errJson = JSON.parse(errorText);
+                    cleanMsg = errJson.message || errJson.error || cleanMsg;
+                } catch (e) { cleanMsg = errorText || cleanMsg; }
+
+                throw new Error(cleanMsg);
+            }
+
+            setProcessing(p => ({ ...p, progress: 80, step: "Analizando respuesta..." }));
+            const rawText = await resp.text();
+            let data = {};
+            if (rawText && rawText.trim()) {
+                try { data = JSON.parse(rawText); }
+                catch { data = { status: "success" }; }
+            }
+
+            setProcessing(p => ({ ...p, progress: 100, step: "¡IA Finalizada!" }));
 
             setTimeout(() => {
                 setProcessing(null);
-                // n8n devuelve { status, request_id, invoice: { emisor, ncf, ... } }
-                const inv = data.invoice ?? data.factura ?? null;
+
+                // BUSQUEDA ULTRA-FLEXIBLE: n8n puede devolver objetos anidados o planos
+                let inv = null;
+                if (data.invoice) inv = data.invoice;
+                else if (data.factura) inv = data.factura;
+                else if (Array.isArray(data)) inv = data[0];
+                else if (data.records && data.records[0]) inv = data.records[0].fields || data.records[0];
+                else if (data.emisor || data.ncf) inv = data; // Objeto plano
+
                 if (inv) {
+                    console.log("✅ Factura detectada:", inv);
                     setAuditData({
-                        ncf:       inv.ncf               ?? "—",
-                        rnc:       inv.id_fiscal_emisor  ?? inv.rnc_emisor ?? "—",
-                        emisor:    inv.emisor             ?? "—",
-                        monto:     inv.total              ?? inv.monto_total ?? "—",
-                        itbis:     inv.itbis              ?? "—",
-                        fecha:     inv.fecha_emision      ?? inv.fecha ?? "—",
-                        tipo:      inv.ncf_validacion?.tipo_nombre ?? inv.tipo_ncf ?? "—",
-                        confianza: data.confianza ?? 95
+                        ncf: inv.ncf || inv.NCF || inv.ncf_emisor || "—",
+                        rnc: inv.id_fiscal_emisor || inv.rnc_emisor || inv.rnc || inv["ID Fiscal"] || "—",
+                        emisor: (typeof inv.emisor === 'object' 
+                            ? (inv.emisor?.nombre ?? inv.emisor?.name ?? inv.emisor?.razon_social ?? JSON.stringify(inv.emisor))
+                            : (inv.emisor || inv.Nombre_Emisor || inv.nombre_emisor || "—")),
+                        monto: inv.total || inv.monto_total || inv.Total || inv.monto || "—",
+                        itbis: inv.itbis || inv.ITBIS || "—",
+                        fecha: inv.fecha_emision || inv.fecha || inv["Fecha de Factura"] || "—",
+                        tipo: inv.ncf_validacion?.tipo_nombre || inv.tipo_ncf || "B01 - Crédito Fiscal",
+                        confianza: data.confianza || inv.confianza || 95,
+                        // IDs para poder borrar si el usuario rechaza
+                        request_id: data.request_id || inv.request_id || null,
+                        airtable_record_id: data.airtable_record_id || null,
                     });
                     setShowAudit(true);
+                } else {
+                    console.warn("⚠️ n8n no devolvió una estructura reconocida:", data);
+                    alert("⚠️ n8n procesó el archivo pero no pudo extraer los campos obligatorios. Revisa que la imagen sea clara.");
                 }
-            }, 400);
+            }, 500);
         } catch (err) {
+            console.error("❌ Error en processWithN8n:", err);
             setProcessing(null);
-            alert("Error al procesar: " + err.message);
+            alert("🚨 ERROR DE CONEXIÓN CON n8n: " + err.message);
         }
     };
 
@@ -1449,29 +1696,62 @@ function ProcesarArchivos({ userId, invoices }) {
             {/* Audit modal */}
             {showAudit && auditData && (
                 <div className="modal-overlay" onClick={() => setShowAudit(false)}>
-                    <div className="modal-box" onClick={e => e.stopPropagation()}>
+                    <div className="modal-box" style={{ width: 500 }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                             <div>
-                                <div className="font-display" style={{ fontSize: 17, fontWeight: 700 }}>Auditoría Humana</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Verifica los datos extraídos por la IA antes de confirmar</div>
+                                <div className="font-display" style={{ fontSize: 18, fontWeight: 700 }}>Verificación de IA</div>
+                                <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Confirma que los datos coincidan con el documento físico</div>
                             </div>
-                            <span className="badge badge-success">🔒 Confianza {auditData.confianza}%</span>
+                            <span className="badge badge-success" style={{ padding: "6px 10px" }}>🔒 {auditData.confianza}% Confianza</span>
                         </div>
+
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-                            {[["NCF", auditData.ncf], ["RNC Emisor", auditData.rnc], ["Emisor", auditData.emisor], ["Tipo", auditData.tipo], ["Monto Total", auditData.monto], ["ITBIS", auditData.itbis], ["Fecha", auditData.fecha]].map(([k, v]) => (
+                            <div style={{ gridColumn: "span 2", background: "var(--bg-surface)", borderRadius: 10, padding: "12px 14px" }}>
+                                <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 4 }}>EMISOR / RAZÓN SOCIAL</div>
+                                <input className="input-field" value={auditData.emisor} onChange={e => setAuditData({ ...auditData, emisor: e.target.value })} style={{ padding: "7px 10px", fontSize: 14, background: "var(--bg-hover)", fontWeight: 600 }} />
+                            </div>
+                            {[
+                                ["NCF / COMPROBANTE", "ncf"],
+                                ["RNC / CÉDULA EMISOR", "rnc"],
+                                ["MONTO TOTAL", "monto"],
+                                ["ITBIS", "itbis"],
+                                ["FECHA FACTURA", "fecha"],
+                                ["TIPO DE GASTO", "tipo"]
+                            ].map(([k, field]) => (
                                 <div key={k} style={{ background: "var(--bg-surface)", borderRadius: 10, padding: "12px 14px" }}>
                                     <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 4 }}>{k}</div>
-                                    <input className="input-field" defaultValue={v} style={{ padding: "7px 10px", fontSize: 13, background: "var(--bg-hover)" }} />
+                                    <input className="input-field" value={auditData[field]} onChange={e => setAuditData({ ...auditData, [field]: e.target.value })} style={{ padding: "7px 10px", fontSize: 13, background: "var(--bg-hover)" }} />
                                 </div>
                             ))}
                         </div>
-                        <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 10, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-                            <Icon d={icons.check} size={15} stroke="var(--success)" />
-                            <span style={{ fontSize: 12, color: "var(--success)" }}>NCF B01 válido según estructura DGII. Sin duplicados detectados.</span>
+
+                        <div style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: 10, padding: "12px 14px", marginBottom: 24, display: "flex", gap: 10 }}>
+                            <div style={{ width: 22, height: 22, background: "var(--success)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <Icon d={icons.check} size={12} stroke="white" strokeWidth={3} />
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.4 }}>
+                                <span style={{ fontWeight: 700, color: "var(--success)" }}>NCF VALIDADO:</span> La estructura del {auditData.ncf} es correcta para Crédito Fiscal (B01).
+                            </div>
                         </div>
-                        <div style={{ display: "flex", gap: 10 }}>
-                            <button className="btn-primary" style={{ flex: 1 }} onClick={() => setShowAudit(false)}>✓ Confirmar y Guardar</button>
-                            <button className="btn-secondary" onClick={() => setShowAudit(false)}>Rechazar</button>
+
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <button className="btn-primary" style={{ flex: 1, height: 44, fontSize: 14, fontWeight: 700 }}
+                                onClick={() => {
+                                    resetUpload();
+                                    // Esperar 2s para que Airtable propague antes de recargar
+                                    setTimeout(() => {
+                                        if (reloadInvoices) reloadInvoices();
+                                        alert("✅ ¡Factura Procesada con Éxito!\n\nLos datos se han guardado. El dashboard se actualizará.");
+                                    }, 2000);
+                                }}>✓ Confirmar y Finalizar</button>
+                            <button className="btn-secondary" style={{ height: 44 }} onClick={async () => {
+                                    const requestId = auditData?.request_id;
+                                    const ncf = auditData?.ncf;
+                                    resetUpload();
+                                    // Intenta borrar usando request_id o NCF como fallback
+                                    await deleteAirtableRecord(requestId, ncf);
+                                    alert("🗑️ Factura rechazada. El registro ha sido eliminado de Airtable.");
+                                }}>Rechazar</button>
                         </div>
                     </div>
                 </div>
@@ -1562,7 +1842,7 @@ function ProcesarArchivos({ userId, invoices }) {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>Historial de Cargas</div>
                         <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
-                            onClick={() => export606Official(invoices)}>
+                            onClick={() => export606Official(invoices, selectedClient?.rnc || "101863567", null, userId)}>
                             <Icon d={icons.download} size={13} />Exportar Formato 606
                         </button>
                     </div>
@@ -1592,7 +1872,7 @@ function ProcesarArchivos({ userId, invoices }) {
                                 <button className="btn-ghost" style={{ padding: 7 }} title="Descargar desde Drive"
                                     onClick={() => h.driveFileId
                                         ? window.open(`https://drive.google.com/uc?export=download&id=${h.driveFileId}`, '_blank')
-                                        : exportCSV606(invoices)}>
+                                        : export606Official(invoices, selectedClient?.rnc || '101863567', null, userId)}>
                                     <Icon d={icons.download} size={15} />
                                 </button>
                             </div>
@@ -1610,7 +1890,7 @@ function Estadisticas({ invoices }) {
     const validas = invData.filter(i => i.estado === "valido").length;
     const conError = invData.filter(i => i.estado === "error").length;
     const tasaExito = invData.length ? ((validas / invData.length) * 100).toFixed(1) : "0.0";
-    
+
     // Agrupación mensual simple por la propiedad "fecha"
     const monthlyMap = {};
     invData.forEach(inv => {
@@ -1670,15 +1950,15 @@ function Estadisticas({ invoices }) {
                         const colors = ["var(--accent)", "var(--accent2)", "var(--success)", "var(--warning)"];
                         const c = colors[i % colors.length];
                         return (
-                        <div key={i} style={{ marginBottom: 14 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                                <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{inv.emisor}</span>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: c }}>1 Docs</span>
+                            <div key={i} style={{ marginBottom: 14 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                                    <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{inv.emisor}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: c }}>1 Docs</span>
+                                </div>
+                                <div className="progress-bar">
+                                    <div className="progress-bar-fill" style={{ "--w": `50%`, width: `50%`, background: c }} />
+                                </div>
                             </div>
-                            <div className="progress-bar">
-                                <div className="progress-bar-fill" style={{ "--w": `50%`, width: `50%`, background: c }} />
-                            </div>
-                        </div>
                         );
                     })}
                     {invData.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: 10 }}>Ningún emisor registrado</div>}
@@ -1688,8 +1968,8 @@ function Estadisticas({ invoices }) {
             <div className="card">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                     <div style={{ fontWeight: 700, fontSize: 14 }}>Exportar Reporte 606 (DGII)</div>
-                    <a href="https://dgii.gov.do/contribuyentes/personas-juridicas/declaraciones/itbis-606/" target="_blank" rel="noopener noreferrer"
-                       style={{ textDecoration: "none" }}><span className="badge badge-info" style={{ cursor: "pointer" }}>↗ Formato oficial DGII</span></a>
+                    <a href="https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscales/Paginas/Formato-606.aspx" target="_blank" rel="noopener noreferrer"
+                        style={{ textDecoration: "none" }}><span className="badge badge-info" style={{ cursor: "pointer" }}>↗ Formato oficial DGII</span></a>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
                     {[["Enero 2026", invData.length], ["Febrero 2026", invData.length], ["Marzo 2026", invData.length]].map(([mes, qty], idx) => (
@@ -1699,7 +1979,7 @@ function Estadisticas({ invoices }) {
                                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{qty} {qty === 1 ? "factura" : "facturas"}</div>
                             </div>
                             <button className="btn-ghost" style={{ padding: "7px 10px" }} title={`Exportar ${mes}`}
-                                onClick={() => exportCSV606(invData)}>
+                                onClick={() => export606Official(invData)}>
                                 <Icon d={icons.download} size={15} />
                             </button>
                         </div>
@@ -1763,9 +2043,11 @@ function DriveView({ invoices }) {
                                     if (f.folder) window.open(`https://drive.google.com/drive/folders/${f.folder}`, '_blank');
                                     else window.open(DRIVE_FOLDER_URL, '_blank');
                                 }}
-                                style={{ padding: "7px 8px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                                style={{
+                                    padding: "7px 8px", borderRadius: 6, fontSize: 12, cursor: "pointer",
                                     color: activeFolder === i ? "var(--accent)" : "var(--text-secondary)",
-                                    background: activeFolder === i ? "var(--accent-glow)" : "transparent" }}>{f.label}</div>
+                                    background: activeFolder === i ? "var(--accent-glow)" : "transparent"
+                                }}>{f.label}</div>
                         ))}
                         <button className="btn-ghost" style={{ width: "100%", marginTop: 8, fontSize: 11, justifyContent: "center", display: "flex", gap: 5 }}
                             onClick={() => window.open(DRIVE_FOLDER_URL, '_blank')}>
@@ -1791,7 +2073,7 @@ function DriveView({ invoices }) {
                                 <span style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)" }}><Icon d={icons.search} size={13} stroke="var(--text-muted)" /></span>
                             </div>
                             <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 12px" }}
-                                onClick={() => exportCSV606(invoices)}>⬇ Exportar</button>
+                                onClick={() => exportXLS(invoices, 'Drive 2026')}>⬇ Exportar</button>
                         </div>
                     </div>
                     <table className="data-table">
@@ -1841,7 +2123,7 @@ function DriveView({ invoices }) {
 // Sheets URL base: the spreadsheet linked to this Airtable
 const SHEETS_REGISTRO_URL = "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKhqPuQP1zRc4yQ8oB";
 
-function SheetsView({ userId, invoices, credits }) {
+function SheetsView({ userId, invoices, credits, selectedClient, reloadInvoices, deleteInvoice }) {
     const invData = invoices || [];
     const [activeSheet, setActiveSheet] = useState(0);
     const [showConnectModal, setShowConnectModal] = useState(false);
@@ -1882,12 +2164,21 @@ function SheetsView({ userId, invoices, credits }) {
                     </div>
                     {sheets.map((s, i) => (
                         <div key={i} className="hover-row" onClick={() => setActiveSheet(i)}
-                            style={{ padding: "9px 10px", borderRadius: 8, marginBottom: 4, cursor: "pointer",
+                            style={{
+                                padding: "9px 10px", borderRadius: 8, marginBottom: 4, cursor: "pointer",
                                 background: activeSheet === i ? "var(--accent-glow)" : "transparent",
-                                border: `1px solid ${activeSheet === i ? "rgba(59,130,246,0.2)" : "transparent"}` }}>
+                                border: `1px solid ${activeSheet === i ? "rgba(59,130,246,0.2)" : "transparent"}`
+                            }}>
                             <div style={{ fontSize: 13, fontWeight: activeSheet === i ? 600 : 400, color: activeSheet === i ? "var(--accent)" : "var(--text-secondary)" }}>{s.name}</div>
                         </div>
                     ))}
+                    <button className="btn-ghost" style={{ width: "100%", marginTop: 10, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                        onClick={() => {
+                            if (typeof reloadInvoices === "function") reloadInvoices();
+                            alert("✓ Datos sincronizados correctamente.");
+                        }}>
+                        <Icon d={icons.refresh} size={13} />Sincronizar
+                    </button>
                     <button className="btn-secondary" style={{ width: "100%", marginTop: 10, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                         onClick={() => setShowConnectModal(true)}>
                         <Icon d={icons.plus} size={13} />Conectar hoja
@@ -1900,18 +2191,31 @@ function SheetsView({ userId, invoices, credits }) {
                             <div style={{ fontWeight: 700, fontSize: 14 }}>{sheets[activeSheet]?.name}</div>
                             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Sincronizada con Airtable</div>
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button className="btn-ghost" style={{ fontSize: 12, gap: 5, display: "flex", alignItems: "center" }}
+                                onClick={() => window.open("https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscales/Paginas/Formato-606.aspx", "_blank")}
+                                title="Descargar plantilla oficial 606 de la DGII">
+                                <Icon d={icons.download} size={14} />Plantilla 606 Oficial DGII ↗
+                            </button>
+                            <button className="btn-ghost" style={{ fontSize: 12, gap: 5, display: "flex", alignItems: "center" }}
+                                onClick={() => window.open("https://dgii.gov.do/app/WebApps/ConsultasWeb2/ConsultasWeb/consultas/rnc.aspx", "_blank")}
+                                title="Consultar RNC en la DGII">
+                                <Icon d={icons.search} size={14} />Consulta de RNC ↗
+                            </button>
                             <button className="btn-ghost" style={{ fontSize: 12, gap: 5, display: "flex", alignItems: "center" }}
                                 onClick={() => window.open(SHEETS_REGISTRO_URL, '_blank')}>
                                 <Icon d={icons.sheet} size={14} />Abrir en Sheets ↗
                             </button>
                             <button className="btn-ghost" style={{ fontSize: 12, gap: 5, display: "flex", alignItems: "center" }}
-                                onClick={() => { alert("✓ Datos sincronizados correctamente."); }}>
+                                onClick={() => { 
+                                    if (typeof reloadInvoices === "function") reloadInvoices();
+                                    alert("✓ Datos sincronizados correctamente."); 
+                                }}>
                                 <Icon d={icons.refresh} size={14} />Sincronizar
                             </button>
                             <button className="btn-secondary" style={{ fontSize: 12, padding: "7px 14px", display: "flex", alignItems: "center", gap: 5 }}
                                 onClick={() => {
-                                    if (activeSheet === 0) export606Official(invData, credits?.rnc || "101863567", null, userId);
+                                    if (activeSheet === 0) export606Official(invData, selectedClient?.rnc || credits?.rnc || "101863567", null, userId);
                                     else exportXLS(invData, sheets[activeSheet]?.name);
                                 }}>
                                 <Icon d={icons.download} size={13} />{activeSheet === 0 ? "Exportar Formato 606" : "Exportar Excel"}
@@ -1920,7 +2224,7 @@ function SheetsView({ userId, invoices, credits }) {
                     </div>
                     <div style={{ overflowX: "auto" }}>
                         <table className="data-table">
-                            <thead><tr><th>#</th><th>Emisor</th><th>RNC</th><th>NCF</th><th>Tipo</th><th>Monto</th><th>ITBIS</th><th>Estado</th></tr></thead>
+                            <thead><tr><th>#</th><th>Emisor</th><th>RNC</th><th>NCF</th><th>Tipo</th><th>Monto</th><th>ITBIS</th><th>Estado</th><th style={{ textAlign: "right" }}>Acción</th></tr></thead>
                             <tbody>
                                 {invData.length === 0 ? (
                                     <tr><td colSpan="8" style={{ padding: 16, textAlign: "center", color: "var(--text-muted)" }}>Hoja vacía</td></tr>
@@ -1934,6 +2238,12 @@ function SheetsView({ userId, invoices, credits }) {
                                         <td style={{ fontWeight: 600, fontSize: 12 }}>{inv.monto}</td>
                                         <td style={{ fontSize: 12 }}>{inv.itbis}</td>
                                         <td>{statusBadge(inv.estado)}</td>
+                                        <td style={{ textAlign: "right" }}>
+                                            <button className="btn-ghost" style={{ padding: 5, color: "var(--danger)", opacity: 0.7 }} title="Eliminar factura de Airtable"
+                                                onClick={() => deleteInvoice && deleteInvoice(inv.airtableId)}>
+                                                <Icon d={icons.trash} size={14} stroke="var(--danger)" />
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -1981,95 +2291,328 @@ function AlertaToggle({ label }) {
     );
 }
 
+
+// ── Mis Clientes ─────────────────────────────────────────────────────────────
+function ClientsView({ userId, clients, setClients, reloadClients, invoices, setSelectedClient, setPage, selectedClient, credits }) {
+    const [showAdd, setShowAdd] = useState(false);
+    const [editingClient, setEditingClient] = useState(null); // Nuevo estado para editar
+    const [formData, setFormData] = useState({ nombre: "", rnc: "" });
+    const [loading, setLoading] = useState(false);
+
+    const handleAdd = async () => {
+        if (!formData.nombre || !formData.rnc) return;
+
+        const cleanRNC = formData.rnc.replace(/[^0-9]/g, '');
+        if (cleanRNC.length !== 9 && cleanRNC.length !== 11) {
+            alert("⚠️ El RNC debe tener 9 dígitos o la Cédula 11 dígitos.");
+            return;
+        }
+
+        setLoading(true);
+        let driveFolderId = null;
+
+        try {
+            // Si hay una carpeta raíz configurada y el plan lo permite, intentamos crear la subcarpeta vía n8n
+            if (credits?.folder_drive_id && credits?.plan !== 'basic') {
+                try {
+                    const webhook = import.meta.env.VITE_N8N_WEBHOOK;
+                    const res = await fetch(webhook, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            action: "create_client_folder",
+                            client_name: formData.nombre,
+                            root_folder_id: credits.folder_drive_id,
+                            user_id: userId
+                        })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        driveFolderId = data.folder_id || data.id || null;
+                        console.log("📂 Carpeta creada en Drive:", driveFolderId);
+                    }
+                } catch (e) {
+                    console.warn("⚠️ No se pudo crear la carpeta en Drive:", e.message);
+                }
+            }
+
+            const payload = { 
+                nombre: formData.nombre, 
+                rnc: cleanRNC,
+                drive_folder_id: driveFolderId 
+            };
+            if (editingClient) {
+                // MODO EDICIÓN QUIRÚRGICO: Solo ID para minimizar conflictos de filtrado
+                console.log("📡 Intentando actualización física en DB para ID:", editingClient.id);
+
+                const { error, data } = await supabase.from("config_clientes_multi")
+                    .update(payload)
+                    .eq("id", editingClient.id)
+                    .select();
+
+                if (error) {
+                    console.error("❌ Error RLS/DB en update:", error);
+                    throw error;
+                }
+
+                if (!data || data.length === 0) {
+                    console.warn("⚠️ El servidor no devolvió datos. Posible bloqueo de RLS.");
+                    alert("⚠️ ERROR DE PERSISTENCIA: El servidor recibió el cambio pero la base de datos lo rechazó silenciosamente. \n\nSOLUCIÓN: Por favor, elimina esta empresa (botón X) y créala de nuevo con el nombre correcto.");
+                    setLoading(false);
+                    return;
+                }
+
+                const updatedRecord = data[0];
+                if (setClients) {
+                    setClients(prev => prev.map(c => c.id == editingClient.id ? updatedRecord : c));
+                }
+                if (setSelectedClient && selectedClient && selectedClient.id == editingClient.id) {
+                    setSelectedClient(updatedRecord);
+                }
+
+                alert("✅ Guardado permanente confirmado en la nube.");
+            } else {
+                // MODO CREACIÓN
+                const { error } = await supabase.from("config_clientes_multi").insert([{
+                    user_id: userId,
+                    ...payload
+                }]);
+                if (error) throw error;
+                alert("✅ Nueva empresa registrada exitosamente.");
+            }
+
+            reloadClients();
+            setEditingClient(null);
+            setFormData({ nombre: "", rnc: "" });
+            setShowAdd(false);
+
+        } catch (err) {
+            console.error("❌ Error crítico en handleAdd:", err);
+            alert("⚠️ No se pudo guardar: " + (err.message || "Error desconocido"));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEditClick = (client) => {
+        setEditingClient(client);
+        setFormData({ nombre: client.nombre, rnc: client.rnc });
+        setShowAdd(true);
+    };
+
+    const handleManage = (client) => {
+        setSelectedClient(client);
+        setPage("dashboard");
+    };
+
+    const handleDelete = async (id) => {
+        if (!confirm("¿Eliminar este cliente de forma permanente?")) return;
+        const { error } = await supabase.from("config_clientes_multi").delete().eq("id", id);
+        if (error) {
+            alert("⚠️ No se pudo eliminar de la nube: " + error.message);
+        } else {
+            reloadClients();
+        }
+    };
+
+    const getInvoiceCount = (rnc) => {
+        return (invoices || []).filter(inv => inv.rnc_empresa === rnc).length;
+    };
+
+    return (
+        <div className="page-content fade-in" style={{ maxWidth: 1100, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, background: "rgba(255,255,255,0.02)", padding: "16px 24px", borderRadius: 16, border: "1px solid var(--border-light)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 8, height: 8, background: "var(--accent)", borderRadius: "50%" }} />
+                    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--text-primary)", letterSpacing: -0.3 }}>Cartera de Clientes</div>
+                </div>
+                {!showAdd && (
+                    <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 12, fontSize: 13 }}>
+                        <Icon d={icons.plus} size={16} /> Agregar Nueva Empresa
+                    </button>
+                )}
+            </div>
+
+            {showAdd && (
+                <div className="card glass" style={{ marginBottom: 32, border: "1px solid var(--accent)", background: "var(--bg-card)", animation: "slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1)", padding: 24, borderRadius: 20 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                        <div style={{ fontWeight: 800, fontSize: 18, display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 8, height: 8, background: "var(--accent)", borderRadius: "50%" }} />
+                            {editingClient ? `Editando: ${editingClient.nombre}` : "Contrato de Nueva Empresa"}
+                        </div>
+                        <button className="btn-ghost" onClick={() => { setShowAdd(false); setEditingClient(null); }} style={{ padding: 6, borderRadius: "50%" }}><Icon d={icons.x} size={18} /></button>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 20, alignItems: "end" }}>
+                        <div className="form-group">
+                            <label style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", display: "block", marginBottom: 10, letterSpacing: 1 }}>NOMBRE COMERCIAL / RAZÓN SOCIAL</label>
+                            <input className="input-field" style={{ height: 48, fontSize: 14 }} value={formData.nombre} onChange={e => setFormData({ ...formData, nombre: e.target.value })} placeholder="Ej. Constructora Marte S.R.L." />
+                        </div>
+                        <div className="form-group">
+                            <label style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", display: "block", marginBottom: 10, letterSpacing: 1 }}>RNC / IDENTIFICACIÓN FISCAL</label>
+                            <input className="input-field" style={{ height: 48, fontSize: 14, fontFamily: "monospace" }} value={formData.rnc} onChange={e => setFormData({ ...formData, rnc: e.target.value })} placeholder="101-23456-7" />
+                        </div>
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <button className="btn-primary" onClick={handleAdd} disabled={loading} style={{ height: 48, padding: "0 24px", fontWeight: 700 }}>
+                                {loading ? "Procesando..." : editingClient ? "Guardar Cambios" : "Crear Empresa"}
+                            </button>
+                            <button className="btn-ghost" onClick={() => { setShowAdd(false); setEditingClient(null); }} style={{ height: 48 }}>Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 24 }}>
+                {clients.length === 0 ? (
+                    <div className="card" style={{ gridColumn: "1/-1", textAlign: "center", padding: "80px 40px", borderRadius: 24, border: "2px dashed var(--border)", background: "transparent" }}>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>🏢</div>
+                        <div style={{ fontWeight: 800, fontSize: 22, color: "var(--text-primary)", marginBottom: 12 }}>Tu oficina virtual está vacía</div>
+                        <div style={{ fontSize: 15, color: "var(--text-muted)", marginBottom: 32, maxWidth: 400, margin: "0 auto 32px", lineHeight: 1.6 }}>Comienza agregando los RNC de tus clientes para empezar a organizar su facturación de forma profesional.</div>
+                        <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ margin: "0 auto", padding: "14px 28px" }}>Agregar mi primer cliente</button>
+                    </div>
+                ) : clients.map((c, i) => {
+                    const count = getInvoiceCount(c.rnc);
+                    return (
+                        <div className="card client-card" key={c.id} style={{
+                            position: "relative",
+                            padding: 28,
+                            borderRadius: 24,
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-card)",
+                            overflow: "hidden",
+                            animation: `fade-in 0.5s ease both ${i * 0.1}s`
+                        }}>
+                            {/* Decorative element */}
+                            <div style={{ position: "absolute", top: -20, right: -20, width: 100, height: 100, background: "var(--accent-glow)", filter: "blur(40px)", borderRadius: "50%", zIndex: 0 }} />
+
+                            <div style={{ position: "relative", zIndex: 1 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+                                    <div style={{ width: 52, height: 52, background: "var(--gradient)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "white", boxShadow: "0 8px 16px -4px var(--accent-glow)" }}>
+                                        <Icon d={icons.layers} size={24} stroke="white" />
+                                    </div>
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                        <button className="btn-ghost" style={{ padding: 8, color: "var(--text-muted)" }} onClick={(e) => { e.stopPropagation(); handleEditClick(c); }} title="Editar">
+                                            <Icon d={icons.edit || "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"} size={16} />
+                                        </button>
+                                        <button className="btn-ghost delete-btn" style={{ padding: 8, color: "var(--text-muted)", transition: "all 0.2s" }} onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }} title="Eliminar cliente">
+                                            <Icon d={icons.x} size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style={{ fontWeight: 800, fontSize: 20, color: "var(--text-primary)", marginBottom: 6, letterSpacing: -0.5 }}>{c.nombre}</div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 28 }}>
+                                    <span style={{ fontSize: 10, fontWeight: 900, background: "var(--accent-glow)", color: "var(--accent)", padding: "2px 8px", borderRadius: 6, letterSpacing: 0.5 }}>RNC</span>
+                                    <span style={{ fontSize: 14, color: "var(--text-secondary)", fontFamily: "var(--font-mono)", fontWeight: 600 }}>{c.rnc}</span>
+                                </div>
+
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                                    <div>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", letterSpacing: 1, marginBottom: 6 }}>VOLUMEN</div>
+                                        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                                            <span style={{ fontWeight: 900, fontSize: 28, color: count > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>{count}</span>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{count === 1 ? 'Factura' : 'Facturas'}</span>
+                                        </div>
+                                    </div>
+                                    <button className="btn-secondary" style={{ padding: "10px 18px", borderRadius: 12, fontSize: 13, fontWeight: 700, borderColor: "var(--border)" }}
+                                        onClick={() => handleManage(c)}>
+                                        Gestionar →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 // ── Configuración ────────────────────────────────────────────────────────────
-function Configuracion({ userId, userEmail, credits }) {
-    const [tab, setTab] = useState("api");
-    const [show, setShow] = useState({});
+function Configuracion({ userId, userEmail, credits, reloadCredits }) {
+    const [tab, setTab] = useState("cuenta");
+    const [loading, setLoading] = useState(false);
+
+    // Tab Cuenta
+    const [profileData, setProfileData] = useState({ rnc: credits?.rnc || "", drive_folder_id: credits?.folder_drive_id || "" });
+    useEffect(() => {
+        if (credits?.rnc !== undefined) setProfileData(prev => ({ ...prev, rnc: credits.rnc || "", drive_folder_id: credits.folder_drive_id || "" }));
+    }, [credits?.rnc, credits?.folder_drive_id]);
+
+    // Tab Notificaciones — carga desde Supabase
+    const [notifData, setNotifData] = useState({ telegram_chat_id: "", notif_canal: "telegram" });
+    const [notifLoaded, setNotifLoaded] = useState(false);
+    useEffect(() => {
+        if (!userId || notifLoaded) return;
+        supabase.from("config_clientes").select("telegram_chat_id,notif_canal").eq("user_id", userId).single()
+            .then(({ data }) => {
+                if (data) setNotifData({ telegram_chat_id: data.telegram_chat_id || "", notif_canal: data.notif_canal || "telegram" });
+                setNotifLoaded(true);
+            });
+    }, [userId, notifLoaded]);
+
+    // Tab API — openai key y prompt personalizado
+    const [apiData, setApiData] = useState({ openai_key: "", prompt: "" });
+    const [apiLoaded, setApiLoaded] = useState(false);
+    const [showKey, setShowKey] = useState(false);
+    useEffect(() => {
+        if (!userId || apiLoaded) return;
+        supabase.from("config_clientes").select("openai_key,prompt_personalizado").eq("user_id", userId).single()
+            .then(({ data }) => {
+                if (data) setApiData({ openai_key: data.openai_key || "", prompt: data.prompt_personalizado || "" });
+                setApiLoaded(true);
+            });
+    }, [userId, apiLoaded]);
+
+    const handleSaveProfile = async () => {
+        setLoading(true);
+        try {
+            const cleanRNC = profileData.rnc.replace(/[^0-9]/g, "");
+            const { error: error1 } = await supabase.from("usuarios").update({ rnc_empresa: cleanRNC }).eq("id", userId);
+            if (error1) {
+                await supabase.from("usuarios").upsert({ id: userId, rnc_empresa: cleanRNC }, { onConflict: "id" });
+            }
+            const { error: error2 } = await supabase.from("config_clientes").update({ folder_drive_id: profileData.drive_folder_id || null }).eq("user_id", userId);
+            if (error2) throw error2;
+
+            if (reloadCredits) await reloadCredits();
+            alert("✅ Perfil y Carpeta Drive actualizados correctamente.");
+        } catch (err) { alert("❌ Error: " + err.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleSaveNotif = async () => {
+        setLoading(true);
+        try {
+            const { error } = await supabase.from("config_clientes")
+                .update({ telegram_chat_id: notifData.telegram_chat_id || null, notif_canal: notifData.notif_canal })
+                .eq("user_id", userId);
+            if (error) throw error;
+            alert("✅ Notificaciones guardadas correctamente.");
+        } catch (err) { alert("❌ Error: " + err.message); }
+        finally { setLoading(false); }
+    };
+
+    const handleSaveApi = async () => {
+        setLoading(true);
+        try {
+            const { error } = await supabase.from("config_clientes")
+                .update({ openai_key: apiData.openai_key || null, prompt_personalizado: apiData.prompt || null })
+                .eq("user_id", userId);
+            if (error) throw error;
+            alert("✅ Configuración de IA guardada.");
+        } catch (err) { alert("❌ Error: " + err.message); }
+        finally { setLoading(false); }
+    };
 
     return (
         <div className="page-content fade-in">
             <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
                 <div className="tabs">
-                    {[["api", "🔑 API & Claves"], ["notif", "🔔 Notificaciones"], ["cuenta", "👤 Cuenta"]].map(([id, label]) => (
+                    {[["cuenta", "👤 Cuenta"], ["notif", "🔔 Notificaciones"], ["api", "🔑 API & IA"]].map(([id, label]) => (
                         <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>
                     ))}
                 </div>
             </div>
-
-            {tab === "api" && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                    {[
-                        { title: "Google Drive API", icon: icons.drive, color: "var(--accent)", fields: [["Client ID", "1082xxxx-abc.apps.google..."], ["Client Secret", "GOCSPX-xxxxxxxx"]] },
-                        { title: "Google Sheets API", icon: icons.sheet, color: "var(--success)", fields: [["Spreadsheet ID", "1BxiMVs0XRA5nFMd..."]] },
-                        { title: "OpenAI API", icon: icons.zap, color: "var(--warning)", fields: [["API Key", "sk-proj-xxxxxxxxxx"]] },
-                        { title: "n8n Webhook", icon: icons.refresh, color: "var(--accent2)", fields: [["Webhook URL", "https://n8n.tudominio.com/webhook/..."], ["Secret Token", "wh_secret_xxxxx"]] },
-                    ].map(({ title, icon, color, fields }) => (
-                        <div className="card" key={title}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                                <div style={{ width: 34, height: 34, background: `${color}18`, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <Icon d={icon} size={16} stroke={color} />
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 13 }}>{title}</div>
-                                    <span className="badge badge-success" style={{ fontSize: 10 }}>Conectado</span>
-                                </div>
-                            </div>
-                            {fields.map(([label, val]) => (
-                                <div key={label} style={{ marginBottom: 10 }}>
-                                    <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 4, fontWeight: 700, letterSpacing: 0.5 }}>{label.toUpperCase()}</label>
-                                    <div style={{ display: "flex", gap: 6 }}>
-                                        <input id={`cfg-${label}`} className="input-field" defaultValue={show[label] ? val : val.substring(0, 6) + "••••••••••"} style={{ flex: 1, fontSize: 12 }} />
-                                        <button className="btn-ghost" style={{ padding: "8px 10px" }} title={show[label] ? "Ocultar" : "Mostrar"} onClick={() => setShow(p => ({ ...p, [label]: !p[label] }))}>
-                                            <Icon d={icons.eye} size={14} />
-                                        </button>
-                                        <button className="btn-ghost" style={{ padding: "8px 10px" }} title="Copiar"
-                                            onClick={() => { navigator.clipboard.writeText(val); alert(`"${label}" copiado al portapapeles.`); }}>
-                                            <Icon d={icons.copy} size={14} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                            <button className="btn-secondary" style={{ width: "100%", fontSize: 12, marginTop: 6 }}
-                                onClick={() => alert("✓ Credenciales actualizadas localmente. Recuerda también actualizar en n8n si aplica.")}>Actualizar credenciales</button>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {tab === "notif" && (
-                <div style={{ maxWidth: 560 }}>
-                    <div className="card" style={{ marginBottom: 14, border: "1px solid rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.05)" }}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                            <span style={{ fontSize: 18 }}>⚠️</span>
-                            <div>
-                                <div style={{ fontWeight: 700, fontSize: 13, color: "var(--warning)", marginBottom: 4 }}>Las notificaciones requieren configuración en n8n</div>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>
-                                    Para que las alertas lleguen a Telegram o Email, debes configurar un nodo de notificación en tu flujo de n8n que use el bot de Telegram o un servidor SMTP. Las preferencias guardadas aquí son enviadas como parte del webhook.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="card">
-                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Canales de Notificación</div>
-                        {[
-                            { label: "Telegram", icon: icons.telegram, placeholder: "Token del bot (ej: 7123456789:AAFxxxxxx)", enabled: true },
-                            { label: "WhatsApp (número)", icon: icons.bell, placeholder: "+1 809 000 0000", enabled: false },
-                            { label: "Email de alertas", icon: icons.inbox, placeholder: "alertas@empresa.com", enabled: true },
-                        ].map(({ label, icon, placeholder, enabled }) => (
-                            <NotifCanal key={label} label={label} icon={icon} placeholder={placeholder} enabled={enabled} />
-                        ))}
-                        <div className="divider" />
-                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Alertas activas</div>
-                        {["Factura con error DGII", "Duplicado detectado", "Carga completada", "Créditos por agotarse"].map(a => (
-                            <AlertaToggle key={a} label={a} />
-                        ))}
-                        <button className="btn-primary" style={{ marginTop: 8 }}
-                            onClick={() => alert("✓ Configuración guardada. Asegúrate de configurar el nodo de Telegram/Email en n8n con estos valores para activar el envío real.")}>Guardar configuración</button>
-                    </div>
-                </div>
-            )}
-
-
 
             {tab === "cuenta" && (
                 <div style={{ maxWidth: 500 }}>
@@ -2084,26 +2627,47 @@ function Configuracion({ userId, userEmail, credits }) {
                                 <span className="badge badge-info" style={{ fontSize: 10, marginTop: 4, textTransform: "capitalize" }}>Plan {credits?.plan ?? "—"}</span>
                             </div>
                         </div>
-                        {[["Email", userEmail ?? ""], ["RNC Empresa", credits?.rnc || "101863567"], ["Plan", credits?.plan ?? "—"]].map(([l, v]) => (
-                            <div key={l} style={{ marginBottom: 12 }}>
-                                <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>{l.toUpperCase()}</label>
-                                <input className="input-field" defaultValue={v} style={{ fontSize: 13 }} />
+                        <div style={{ marginBottom: 12 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>EMAIL</label>
+                            <input className="input-field" value={userEmail ?? ""} disabled style={{ fontSize: 13, opacity: 0.7 }} />
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>RNC EMPRESA</label>
+                            <input className="input-field" value={profileData.rnc}
+                                onChange={e => setProfileData({ ...profileData, rnc: e.target.value })}
+                                placeholder="101863567" style={{ fontSize: 13 }} />
+                        </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>ID CARPETA GOOGLE DRIVE (RAÍZ)</label>
+                            <input className="input-field" value={profileData.drive_folder_id}
+                                onChange={e => setProfileData({ ...profileData, drive_folder_id: e.target.value })}
+                                placeholder={credits?.plan === 'basic' ? "Función Pro/Premium" : "Ej: 1PgkAJbmqk..."} 
+                                style={{ fontSize: 13, borderColor: credits?.plan === 'basic' ? 'var(--border)' : 'var(--accent)' }} 
+                                disabled={credits?.plan === 'basic'} />
+                            <div style={{ fontSize: 10, color: credits?.plan === 'basic' ? 'var(--warning)' : 'var(--text-muted)', marginTop: 4 }}>
+                                {credits?.plan === 'basic' 
+                                    ? "⚡ Esta función (Carpetas Automáticas) solo está disponible en el Plan Pro o Premium." 
+                                    : "Aquí se crearán las carpetas de tus clientes automáticamente"}
                             </div>
-                        ))}
-                        <button className="btn-primary" style={{ marginTop: 4 }}
-                            onClick={() => alert("✓ Perfil actualizado correctamente.")}>Actualizar perfil</button>
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>PLAN ACTIVO</label>
+                            <input className="input-field" value={credits?.plan ?? "—"} disabled style={{ fontSize: 13, opacity: 0.7, textTransform: "capitalize" }} />
+                        </div>
+                        <button className="btn-primary" style={{ marginTop: 4 }} onClick={handleSaveProfile} disabled={loading}>
+                            {loading ? "Guardando..." : "Actualizar perfil"}
+                        </button>
                     </div>
                     <div className="card">
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Tu Plan</div>
                         <div style={{ background: "var(--gradient)", borderRadius: 12, padding: "16px 18px", marginBottom: 14 }}>
-                            <div style={{ fontWeight: 800, fontSize: 18, color: "white", marginBottom: 2, textTransform: "capitalize" }}>{credits?.plan ?? "—"}</div>
+                            <div style={{ fontWeight: 800, fontSize: 18, color: "white", textTransform: "capitalize" }}>{credits?.plan ?? "—"}</div>
                             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
                                 {credits?.creditos_limite === -1 ? "Créditos ilimitados" : `${credits?.creditos_limite ?? "—"} créditos/mes`}
                             </div>
                         </div>
-                        {[
-                            ["Créditos usados", credits ? `${credits.creditos_usados} / ${credits.creditos_limite === -1 ? "∞" : credits.creditos_limite}` : "—", "var(--accent)"],
-                            ["Renovación", credits?.fecha_renovacion ? new Date(credits.fecha_renovacion).toLocaleDateString("es-DO") : "—", "var(--text-secondary)"]
+                        {[["Créditos usados", credits ? `${credits.creditos_usados} / ${credits.creditos_limite === -1 ? "∞" : credits.creditos_limite}` : "—", "var(--accent)"],
+                          ["Renovación", credits?.fecha_renovacion ? new Date(credits.fecha_renovacion).toLocaleDateString("es-DO") : "—", "var(--text-secondary)"]
                         ].map(([k, v, c]) => (
                             <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
                                 <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{k}</span>
@@ -2111,14 +2675,103 @@ function Configuracion({ userId, userEmail, credits }) {
                             </div>
                         ))}
                         <button className="btn-secondary" style={{ width: "100%", marginTop: 14, fontSize: 13 }}
-                            onClick={() => window.open("https://buy.stripe.com/test_00gaGQbOf5kX7XW145", "_blank")}>Cambiar plan</button>
+                            onClick={() => window.open("https://buy.stripe.com/test_00gaGQbOf5kX7XW145", "_blank")}>Cambiar plan →</button>
+                    </div>
+                </div>
+            )}
+
+            {tab === "notif" && (
+                <div style={{ maxWidth: 560 }}>
+                    <div className="card">
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Canales de Notificación</div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>CANAL ACTIVO</label>
+                            <select className="input-field" style={{ fontSize: 13 }} value={notifData.notif_canal}
+                                onChange={e => setNotifData({ ...notifData, notif_canal: e.target.value })}>
+                                <option value="telegram">📱 Telegram</option>
+                                <option value="email">✉️ Email (configura SMTP en n8n)</option>
+                                <option value="none">🔕 Sin notificaciones</option>
+                            </select>
+                        </div>
+                        <div style={{ marginBottom: 20 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>
+                                TELEGRAM CHAT ID
+                                <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 8 }}>(escríbele a @userinfobot en Telegram)</span>
+                            </label>
+                            <input className="input-field" placeholder="Ej: 7192815138"
+                                value={notifData.telegram_chat_id}
+                                onChange={e => setNotifData({ ...notifData, telegram_chat_id: e.target.value })}
+                                style={{ fontSize: 13 }} />
+                        </div>
+                        <div className="divider" />
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Alertas activas</div>
+                        {["Factura con error DGII", "Duplicado detectado", "Carga completada", "Créditos por agotarse"].map(a => (
+                            <AlertaToggle key={a} label={a} />
+                        ))}
+                        <button className="btn-primary" style={{ marginTop: 14 }} onClick={handleSaveNotif} disabled={loading}>
+                            {loading ? "Guardando..." : "Guardar configuración de notificaciones"}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {tab === "api" && (
+                <div style={{ maxWidth: 560 }}>
+                    <div className="card" style={{ marginBottom: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                            <div style={{ width: 34, height: 34, background: "rgba(245,158,11,0.12)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                <Icon d={icons.zap} size={16} stroke="var(--warning)" />
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>OpenAI — Motor OCR</div>
+                        </div>
+                        <div style={{ marginBottom: 14 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>API KEY PERSONAL (opcional)</label>
+                            <div style={{ display: "flex", gap: 6 }}>
+                                <input className="input-field" style={{ flex: 1, fontSize: 12, fontFamily: "monospace" }}
+                                    type={showKey ? "text" : "password"}
+                                    placeholder="sk-proj-... (vacío = usa la de n8n)"
+                                    value={apiData.openai_key}
+                                    onChange={e => setApiData({ ...apiData, openai_key: e.target.value })} />
+                                <button className="btn-ghost" style={{ padding: "8px 10px" }} onClick={() => setShowKey(p => !p)}>
+                                    <Icon d={icons.eye} size={14} />
+                                </button>
+                            </div>
+                        </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>PROMPT PERSONALIZADO DE OCR</label>
+                            <textarea className="input-field"
+                                style={{ fontSize: 12, minHeight: 100, resize: "vertical", fontFamily: "monospace" }}
+                                placeholder="Ej: Eres experto en facturas dominicanas. Extrae en JSON: emisor, ncf, total, itbis..."
+                                value={apiData.prompt}
+                                onChange={e => setApiData({ ...apiData, prompt: e.target.value })} />
+                            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>Vacío = usa el prompt estándar de n8n.</div>
+                        </div>
+                        <button className="btn-primary" onClick={handleSaveApi} disabled={loading}>
+                            {loading ? "Guardando..." : "Guardar configuración de IA"}
+                        </button>
+                    </div>
+                    <div className="card">
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>Estado de integraciones</div>
+                        {[
+                            ["Google Drive", "var(--success)", credits?.folder_drive_id ? "Carpeta configurada ✓" : "Configura en n8n"],
+                            ["Airtable", "var(--success)", credits?.airtable_base_id ? "Base: " + credits.airtable_base_id : "Configura en n8n"],
+                            ["n8n Webhook", "var(--accent2)", "Configura en .env → VITE_N8N_WEBHOOK"],
+                            ["Stripe", "var(--warning)", "Plan " + (credits?.plan || "—") + " · Renovación " + (credits?.fecha_renovacion ? new Date(credits.fecha_renovacion).toLocaleDateString("es-DO") : "—")],
+                        ].map(([name, color, detail]) => (
+                            <div key={name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+                                    <span style={{ fontSize: 13, fontWeight: 600 }}>{name}</span>
+                                </div>
+                                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{detail}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
         </div>
     );
 }
-
 // ── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
     const session = useSession();
@@ -2126,7 +2779,55 @@ export default function App() {
     const [searchTerm, setSearchTerm] = useState("");
     const userId = session?.user?.id ?? null;
     const { credits, reloadCredits } = useCredits(userId);
-    const { invoices, loading: dataLoading } = useAirtableInvoices(userId, credits);
+    const { clients, setClients, reloadClients } = useClients(userId);
+    const [selectedClient, setSelectedClient] = useState(null);
+    const { invoices, loading: dataLoading, reloadInvoices } = useAirtableInvoices(userId, credits);
+
+    // Recargar Airtable automáticamente cuando cambia el cliente seleccionado
+    useEffect(() => {
+        if (reloadInvoices) reloadInvoices();
+    }, [selectedClient?.id]);
+
+    const deleteInvoiceFromAirtable = async (airtableId) => {
+        if (!confirm("¿Estás seguro de que deseas eliminar esta factura de forma permanente? Esta acción no se puede deshacer.")) return;
+        try {
+            const token = import.meta.env.VITE_AIRTABLE_TOKEN;
+            const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
+            const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
+            const res = await fetch(`https://api.airtable.com/v0/${baseId}/${tableId}/${airtableId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                alert("✓ Factura eliminada correctamente.");
+                reloadInvoices();
+            } else {
+                const errText = await res.text();
+                alert("⚠️ Error al eliminar en Airtable: " + errText);
+            }
+        } catch (err) {
+            alert("⚠️ Error de conexión: " + err.message);
+        }
+    };
+
+    // Filtrado reactivo en el frontend — aislamiento total por cliente
+    const displayInvoices = useMemo(() => {
+        if (!invoices) return [];
+        if (!selectedClient) {
+            // "Tú" = solo facturas SIN rnc_empresa (del contador principal)
+            const propias = invoices.filter(inv => !inv.rnc_empresa || inv.rnc_empresa === "");
+            console.log("[FLUXIA] Vista: jatasoy (propias) | Facturas:", propias.length, "/ Total:", invoices.length);
+            return propias;
+        }
+        // Cliente seleccionado = solo sus facturas por RNC
+        const targetRNC = (selectedClient.rnc || "").toString().replace(/[^0-9]/g, "");
+        const filtered = invoices.filter(inv => {
+            const invRNC = (inv.rnc_empresa || "").toString().replace(/[^0-9]/g, "");
+            return invRNC !== "" && invRNC === targetRNC;
+        });
+        console.log("[FLUXIA] Cliente:", selectedClient.nombre, "| RNC:", targetRNC, "| Facturas:", filtered.length, "/ Total:", invoices.length);
+        return filtered;
+    }, [invoices, selectedClient]);
 
     // session === undefined → todavía cargando sesión
     // credits === undefined && session → todavía cargando config_clientes
@@ -2151,13 +2852,14 @@ export default function App() {
         );
     }
 
-    const pages = { 
-        dashboard: <Dashboard userId={userId} setPage={setPage} invoices={invoices} dataLoading={dataLoading} searchTerm={searchTerm} credits={credits} />, 
-        procesar: <ProcesarArchivos userId={userId} invoices={invoices || []} />, 
-        estadisticas: <Estadisticas invoices={invoices || []} />, 
-        drive: <DriveView invoices={invoices || []} />, 
-        sheets: <SheetsView userId={userId} invoices={invoices || []} credits={credits} />, 
-        configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} /> 
+    const pages = {
+        dashboard: <Dashboard userId={userId} setPage={setPage} invoices={displayInvoices} dataLoading={dataLoading} searchTerm={searchTerm} credits={credits} selectedClient={selectedClient} userConfig={credits} />,
+        procesar: <ProcesarArchivos userId={userId} invoices={displayInvoices} selectedClient={selectedClient} reloadInvoices={reloadInvoices} credits={credits} />,
+        clientes: <ClientsView userId={userId} clients={clients} setClients={setClients} reloadClients={reloadClients} invoices={invoices || []} setSelectedClient={setSelectedClient} setPage={setPage} selectedClient={selectedClient} credits={credits} />,
+        estadisticas: <Estadisticas invoices={displayInvoices} />,
+        drive: <DriveView invoices={displayInvoices} />,
+        sheets: <SheetsView userId={userId} invoices={displayInvoices} credits={credits} selectedClient={selectedClient} reloadInvoices={reloadInvoices} deleteInvoice={deleteInvoiceFromAirtable} />,
+        configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} reloadCredits={reloadCredits} />
     };
 
     return (
@@ -2169,7 +2871,11 @@ export default function App() {
                 <div className="app-layout">
                     <Sidebar active={page} setActive={setPage} onLogout={() => supabase.auth.signOut()} userEmail={session.user.email} credits={credits} />
                     <div className="main-content">
-                        <Topbar page={page} setPage={setPage} userEmail={session.user.email} invoices={invoices} onSearch={setSearchTerm} />
+                        <Topbar
+                            page={page} setPage={setPage} userEmail={session.user.email}
+                            invoices={invoices} onSearch={setSearchTerm}
+                            clients={clients} selectedClient={selectedClient} setSelectedClient={setSelectedClient}
+                        />
                         {pages[page]}
                     </div>
                 </div>
