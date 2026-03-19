@@ -1020,7 +1020,7 @@ function Topbar({ page, setPage, userEmail, invoices, onSearch, clients, selecte
 // ── Onboarding & Stripe ───────────────────────────────────────────────────────
 function Onboarding({ userId, userEmail, reloadCredits }) {
     const [step, setStep] = useState(1);
-    const [formData, setFormData] = useState({ empresa: "", rnc: "", plan: "basic" });
+    const [formData, setFormData] = useState({ empresa: "", rnc: "", plan: "pro", primerCliente: "", primerRNC: "" });
     const [loading, setLoading] = useState(false);
 
     const checkouts = {
@@ -1053,9 +1053,20 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
             }], { onConflict: 'user_id' });
             if (res2.error) throw new Error("Error en config_clientes: " + (res2.error.message || JSON.stringify(res2.error)));
 
+            // 3. Guardar primer cliente si se proporcionó
+            if (formData.primerCliente && formData.primerRNC) {
+                const cleanRNC = formData.primerRNC.replace(/[^0-9]/g, "");
+                await supabase.from("config_clientes_multi").insert([{
+                    user_id: userId,
+                    nombre: formData.primerCliente,
+                    rnc: cleanRNC
+                }]);
+            }
+
             // Redirect to Stripe or Complete Onboarding
             const stripeLink = checkouts[formData.plan];
             if (stripeLink) {
+                // Generamos el link con el client_reference_id para trazar el pago
                 window.location.href = `${stripeLink}?client_reference_id=${userId}`;
             } else {
                 reloadCredits();
@@ -1092,20 +1103,53 @@ function Onboarding({ userId, userEmail, reloadCredits }) {
                     <div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
                             {[
-                                { id: "basic", t: "Básico", desc: "100 facturas", price: "$17/mes" },
-                                { id: "pro", t: "Pro", desc: "500 facturas", price: "$47/mes" },
-                                { id: "premium", t: "Premium", desc: "Ilimitado", price: "$103/mes" }
+                                { id: "basic", t: "Básico", desc: "100 facturas", price: "$19.99", color: "var(--text-muted)" },
+                                { id: "pro", t: "Pro", desc: "500 facturas", price: "$49.99", color: "var(--accent)", popular: true },
+                                { id: "premium", t: "Premium", desc: "2,000 facturas", price: "$129.99", color: "#FFD700" }
                             ].map(p => (
-                                <div key={p.id} onClick={() => setFormData({ ...formData, plan: p.id })} style={{ padding: "16px", borderRadius: 12, border: `2px solid ${formData.plan === p.id ? "var(--accent)" : "var(--border)"}`, background: formData.plan === p.id ? "var(--accent-glow)" : "var(--bg-surface)", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 14 }}>{p.t}</div>
-                                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>{p.price}</div>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{p.desc}</div>
+                                <div key={p.id} onClick={() => setFormData({ ...formData, plan: p.id })} 
+                                    style={{ 
+                                        padding: "20px 16px", 
+                                        borderRadius: 16, 
+                                        border: `2px solid ${formData.plan === p.id ? "var(--accent)" : "var(--border)"}`, 
+                                        background: formData.plan === p.id ? "var(--bg-hover)" : "var(--bg-surface)", 
+                                        cursor: "pointer", 
+                                        display: "flex", 
+                                        flexDirection: "column", 
+                                        gap: 8,
+                                        position: "relative",
+                                        transition: "all 0.2s ease"
+                                    }}>
+                                    {p.popular && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "var(--accent)", color: "white", fontSize: 9, fontWeight: 900, padding: "2px 8px", borderRadius: 20, letterSpacing: 0.5 }}>MÁS POPULAR</div>}
+                                    <div style={{ fontWeight: 800, fontSize: 13, color: p.color }}>{p.t.toUpperCase()}</div>
+                                    <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{p.price}<span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>/mes</span></div>
+                                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.desc}</div>
                                 </div>
                             ))}
                         </div>
-                        <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
-                            {loading ? "Preparando Stripe..." : "Completar Registro y Pagar"}
+                        <button className="btn-primary" onClick={() => setStep(3)}>Continuar al último paso →</button>
+                        <button className="btn-ghost" style={{ marginTop: 10 }} onClick={() => setStep(1)}>← Volver atrás</button>
+                    </div>
+                )}
+
+                {step === 3 && (
+                    <div style={{ textAlign: "left" }}>
+                        <div style={{ background: "var(--accent-glow)", padding: 16, borderRadius: 12, marginBottom: 24, border: "1px solid rgba(59,130,246,0.1)" }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)", marginBottom: 4 }}>🚀 ¡Casi listo!</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Para empezar con fuerza, registra la primera empresa o cliente que vas a gestionar.</div>
+                        </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>NOMBRE DEL CLIENTE / EMPRESA *</label>
+                            <input className="input-field" value={formData.primerCliente} onChange={e => setFormData({ ...formData, primerCliente: e.target.value })} placeholder="Ej. Constructora Marte S.R.L." />
+                        </div>
+                        <div style={{ marginBottom: 24 }}>
+                            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6, display: "block" }}>RNC / CÉDULA DEL CLIENTE *</label>
+                            <input className="input-field" value={formData.primerRNC} onChange={e => setFormData({ ...formData, primerRNC: e.target.value })} placeholder="101863567" />
+                        </div>
+                        <button className="btn-primary" onClick={handleSubmit} disabled={loading || !formData.primerCliente || !formData.primerRNC}>
+                            {loading ? "Preparando pago..." : "Finalizar y Pagar con Stripe"}
                         </button>
+                        <button className="btn-ghost" style={{ width: "100%", marginTop: 10 }} onClick={() => setStep(2)}>← Cambiar plan</button>
                     </div>
                 )}
             </div>
