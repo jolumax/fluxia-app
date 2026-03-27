@@ -11,9 +11,14 @@ export function Reporteria({ invoices, credits, selectedClient }) {
 
     const filtered = useMemo(() => {
         return invoices.filter(inv => {
-            if (!inv.fecha_emision || inv.fecha_emision === "—") return false;
-            const d = new Date(inv.fecha_emision);
-            return (d.getMonth() + 1) === period.month && d.getFullYear() === period.year;
+            const raw = inv.fecha_emision;
+            if (!raw || raw === "—") return false;
+            // YYYY-MM-DD → split directo, sin Date() para evitar UTC offset
+            const parts = raw.split("-");
+            if (parts.length < 2) return false;
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            return month === period.month && year === period.year;
         });
     }, [invoices, period]);
 
@@ -42,11 +47,11 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 12, color: "var(--accent)", fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>
                     <Icon d={icons.layers} size={16} stroke="var(--accent)" /> GESTIÓN FISCAL
                 </div>
-                <h1 className="font-display" style={{ 
-                    fontSize: "clamp(32px, 5vw, 48px)", 
-                    fontWeight: 900, 
-                    lineHeight: 1.1, 
-                    color: "var(--text-primary)", 
+                <h1 className="font-display" style={{
+                    fontSize: "clamp(32px, 5vw, 48px)",
+                    fontWeight: 900,
+                    lineHeight: 1.1,
+                    color: "var(--text-primary)",
                     textTransform: "uppercase",
                     margin: "0 0 12px",
                     letterSpacing: "-1px"
@@ -58,7 +63,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                         Gestionando facturación de <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{selectedClient.nombre} ({selectedClient.rnc})</span>
                     </div>
                 )}
-                
+
                 {/* Period Selector Centered */}
                 <div style={{ display: "inline-flex", gap: 8, background: "var(--bg-surface)", padding: "8px 16px", borderRadius: 14, border: "1px solid var(--border)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, paddingRight: 10, borderRight: "1px solid var(--border)" }}>
@@ -90,7 +95,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                     </button>
                 </div>
             </div>
-            
+
             <div className="card">
                 <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
                     <Icon d={icons.layers} size={18} stroke="var(--accent)" /> Formatos Oficiales DGII
