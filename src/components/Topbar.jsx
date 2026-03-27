@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 
-export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedClient, setSelectedClient, onMenuClick }) {
+export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedClient, setSelectedClient, onMenuClick, theme, toggleTheme }) {
     const initials = userEmail ? userEmail.substring(0, 2).toUpperCase() : "FL";
     const titles = { 
         dashboard: "Dashboard", 
@@ -77,6 +77,11 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
                     <input className="input-field" placeholder="Buscar facturas, NCF..." style={{ width: 220, padding: "8px 14px 8px 34px", fontSize: 12 }}
                         onChange={e => onSearch && onSearch(e.target.value)} />
                     <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}><Icon d={icons.search} size={14} /></span>
+                </div>
+                <div style={{ position: "relative" }}>
+                    <button className="btn-ghost" style={{ padding: 8 }} onClick={toggleTheme} title={theme === "dark" ? "Modo Claro" : "Modo Oscuro"}>
+                        <Icon d={theme === "dark" ? icons.sun : icons.moon} size={18} />
+                    </button>
                 </div>
                 <div style={{ position: "relative" }}>
                     <button className="btn-ghost" style={{ position: "relative", padding: 8 }} onClick={() => setShowNotif(p => !p)}>
