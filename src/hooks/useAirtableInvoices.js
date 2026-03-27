@@ -8,15 +8,16 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
     const reloadInvoices = useCallback(() => setReload(r => r + 1), []);
 
     useEffect(() => {
-        if (!userId || !credits) {
-            setLoading(false);
-            return;
-        }
+        let isMounted = true;
 
         const fetchAirtable = async () => {
+            if (!userId || !credits) {
+                if (isMounted) setLoading(false);
+                return;
+            }
             try {
                 const token = import.meta.env.VITE_AIRTABLE_TOKEN;
-                if (!token) { setLoading(false); return; }
+                if (!token) { if (isMounted) setLoading(false); return; }
 
                 const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
                 const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
@@ -41,8 +42,8 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                 if (data.records) {
                     const mapped = data.records.map(r => {
                         const f = r.fields;
-                        const rawMonto = parseFloat(f.Total || f.monto_total || 0);
-                        const rawItbis = parseFloat(f.ITBIS || f.itbis_total || 0);
+                        const rawMonto = parseFloat((f.Total || f.monto_total || f["Monto Facturado"] || 0).toString().replace(/[^0-9.]/g, ""));
+                        const rawItbis = parseFloat((f.ITBIS || f.itbis_total || f["ITBIS Facturado"] || 0).toString().replace(/[^0-9.]/g, ""));
 
                         // Fix: nombre exacto de columna en Airtable con paréntesis
                         const rawFecha = f["Fecha de Factura (fecha)"] || f["Fecha de Factura"] || f.fecha || f.fecha_emision || "—";
@@ -50,17 +51,19 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                         // Normalizar fecha a DD/MM/YYYY
                         const normFecha = normalizarFecha(rawFecha);
 
-                        const rawEmisorRnc = f["ID Fiscal"] || f["RNC Emisor"] || f.rnc || "—";
+                        const rawEmisorRnc = f["RNC/Cedula"] || f["ID Fiscal (id_fiscal)"] || f["ID Fiscal"] || f["RNC Emisor"] || f.rnc || f.rnc_emisor || f.id_fiscal || "—";
+                        const rawEmisorNombre = f.Emisor || f.Nombre_Emisor || f["Emisor / Razon Social"] || f["Nombre Emisor"] || f.emisor || "Desconocido";
+                        const rawNCF = f.ncf || f.NCF || f["NCF/e-NCF"] || "—";
 
                         return {
                             id: f.request_id || r.id.substring(0, 8),
-                            emisor: f.Emisor || f.Nombre_Emisor || "Desconocido",
+                            emisor: rawEmisorNombre,
                             rnc: rawEmisorRnc,
                             rnc_emisor: rawEmisorRnc,
-                            ncf: f.ncf || f.NCF || "—",
-                            monto: `RD$${rawMonto.toLocaleString("es-DO")}`,
+                            ncf: rawNCF,
+                            monto: `RD$${rawMonto.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`,
                             monto_total: rawMonto,
-                            itbis: `RD$${rawItbis.toLocaleString("es-DO")}`,
+                            itbis: `RD$${rawItbis.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`,
                             itbis_total: rawItbis,
                             fecha: normFecha,
                             fecha_emision: normFecha,
@@ -72,14 +75,15 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                             airtableId: r.id
                         };
                     });
-                    setInvoices(mapped);
+                    if (isMounted) setInvoices(mapped);
                 }
             } catch (err) {
                 console.error("Airtable fetch error:", err);
             }
-            setLoading(false);
+            if (isMounted) setLoading(false);
         };
         fetchAirtable();
+        return () => { isMounted = false; };
     }, [userId, credits, reload, selectedClientRNC]);
 
     return { invoices, loading, reloadInvoices };
