@@ -204,6 +204,9 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                         <a href="https://dgii.gov.do/app/WebApps/ConsultasWeb2/ConsultasWeb/consultas/rnc.aspx" target="_blank" rel="noreferrer" className="btn-ghost" style={{ justifyContent: "space-between", fontSize: 12, padding: "10px 14px" }}>
                             Consulta de RNC <Icon d={icons.external} size={14} />
                         </a>
+                        <a href="https://dgii.gov.do/app/WebApps/ConsultasWeb2/ConsultasWeb/consultas/ncf.aspx" target="_blank" rel="noreferrer" className="btn-ghost" style={{ justifyContent: "space-between", fontSize: 12, padding: "10px 14px" }}>
+                            Consulta de NCF <Icon d={icons.external} size={14} />
+                        </a>
                     </div>
                 </div>
             </div>
