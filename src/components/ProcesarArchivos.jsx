@@ -38,9 +38,10 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                     const body = {
                         user_id: userId,
                         file_name: file.name,
-                        file_data: base64,
+                        file_base64: base64,
+                        audit_mode: true,
                         rnc_empresa: selectedClient?.rnc || "",
-                        nombre_empresa: selectedClient?.nombre || ""
+                        drive_folder_id: selectedClient?.drive_folder_id || credits?.folder_drive_id || ""
                     };
 
                     const res = await fetch(webhook, {
@@ -104,18 +105,18 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                         {isExpired ? "Suscripción Expirada" : "Créditos Agotados"}
                     </h3>
                     <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16, maxWidth: 450, margin: "0 auto 16px" }}>
-                        {isExpired 
-                            ? "Tu ciclo mensual de 30 días ha finalizado. Los créditos no consumidos no son acumulables. Para seguir procesando, debes pagar la renovación del nuevo mes." 
+                        {isExpired
+                            ? "Tu ciclo mensual de 30 días ha finalizado. Los créditos no consumidos no son acumulables. Para seguir procesando, debes pagar la renovación del nuevo mes."
                             : "Has consumido el límite de facturas de tu plan mensual correspondiente a estos 30 días. Por favor, agrega más créditos o mejora tu plan para continuar procesando documentos."}
                     </p>
                     <button className="btn-primary" style={{ margin: "0 auto" }} onClick={() => window.location.href = "/?plan=pro"}>Renovar o Aumentar Créditos</button>
                 </div>
             )}
 
-            <div 
-                className={`card ${isOutOfCredits ? "disabled" : ""}`} 
-                style={{ textAlign: "center", padding: 60, opacity: isOutOfCredits ? 0.6 : 1, pointerEvents: isOutOfCredits ? "none" : "auto" }} 
-                onDragOver={e => e.preventDefault()} 
+            <div
+                className={`card ${isOutOfCredits ? "disabled" : ""}`}
+                style={{ textAlign: "center", padding: 60, opacity: isOutOfCredits ? 0.6 : 1, pointerEvents: isOutOfCredits ? "none" : "auto" }}
+                onDragOver={e => e.preventDefault()}
                 onDrop={onDrop}
             >
                 <div style={{ width: 80, height: 80, background: "var(--accent-glow)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
