@@ -1,14 +1,32 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { StatusBadge } from "./common/StatusBadge";
 import { Skeleton } from "./common/Skeleton";
 import { export606Official } from "../utils/exportLogic";
 import { InvoiceEditModal } from "./InvoiceEditModal";
-import { useState } from "react";
 
 export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoice, dataLoading, credits, selectedClient }) {
     const [editingInvoice, setEditingInvoice] = useState(null);
+    const [localSearch, setLocalSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("all");
+
+    const filteredInvoices = useMemo(() => {
+        let list = invoices || [];
+        if (localSearch) {
+            const low = localSearch.toLowerCase();
+            list = list.filter(inv => 
+                inv.emisor.toLowerCase().includes(low) || 
+                inv.ncf.toLowerCase().includes(low) ||
+                inv.rnc.toLowerCase().includes(low)
+            );
+        }
+        if (statusFilter !== "all") {
+            list = list.filter(inv => inv.estado === statusFilter);
+        }
+        return list;
+    }, [invoices, localSearch, statusFilter]);
+
     const handleExportExcel = () => {
         const rnc = (credits?.rnc || selectedClient?.rnc || "000000000").replace(/[^0-9]/g, "");
         const periodoStr = new Date().toISOString().substring(0, 7).replace("-", "");
@@ -28,6 +46,33 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
                     <button className="btn-secondary" onClick={handleExportExcel}><Icon d={icons.zap} size={16} /> Exportar Excel</button>
                     <button className="btn-ghost" onClick={() => reloadInvoices()}><Icon d={icons.refresh} size={16} /> Refrescar</button>
                     <button className="btn-secondary" style={{ width: "auto" }} onClick={() => window.open(import.meta.env.VITE_SHEETS_REGISTRO_URL, "_blank")}>Abrir Google Sheets</button>
+                </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+                    <input 
+                        className="input-field" 
+                        placeholder="Buscar por emisor, NCF o RNC..." 
+                        style={{ paddingLeft: 34, fontSize: 13 }}
+                        value={localSearch}
+                        onChange={(e) => setLocalSearch(e.target.value)}
+                    />
+                    <Icon d={icons.search} size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                </div>
+                <select 
+                    className="input-field" 
+                    style={{ width: 160, fontSize: 13 }}
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="all">Todos los Estados</option>
+                    <option value="valido">Válidas ✅</option>
+                    <option value="error">Con Error ❌</option>
+                    <option value="duplicado">Duplicadas 🔁</option>
+                </select>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                    Mostrando {filteredInvoices.length} registros
                 </div>
             </div>
 
@@ -60,7 +105,7 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
                                         <td><Skeleton width={20} /></td>
                                     </tr>
                                 ))
-                            ) : (invoices || []).map((inv, i) => (
+                            ) : filteredInvoices.map((inv, i) => (
                                 <tr key={i} className="hover-row">
                                     <td>{inv.fecha}</td>
                                     <td>

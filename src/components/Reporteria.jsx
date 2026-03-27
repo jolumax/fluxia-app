@@ -2,6 +2,8 @@ import React, { useState, useMemo } from "react";
 import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { export606Txt, export606Official } from "../utils/exportLogic";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export function Reporteria({ invoices, credits, selectedClient }) {
     const [period, setPeriod] = useState({
@@ -47,6 +49,62 @@ export function Reporteria({ invoices, credits, selectedClient }) {
         const rnc = (credits?.rnc || selectedClient?.rnc || "000000000").replace(/[^0-9]/g, "");
         const periodoStr = `${period.year}${period.month.toString().padStart(2, "0")}`;
         export606Official(filtered, rnc, periodoStr);
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+        const clientName = selectedClient?.nombre || "Usuario Fluxia";
+        const clientRNC = selectedClient?.rnc || credits?.rnc || "N/A";
+        const monthName = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][period.month - 1];
+
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(59, 130, 246);
+        doc.text("FLUXIA - Resumen de Facturación", 14, 22);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Cliente: ${clientName}`, 14, 32);
+        doc.text(`RNC: ${clientRNC}`, 14, 37);
+        doc.text(`Periodo: ${monthName} ${period.year}`, 14, 42);
+        doc.text(`Fecha de Gen: ${new Date().toLocaleDateString()}`, 14, 47);
+
+        // Stats Box
+        doc.setFillColor(248, 250, 252);
+        doc.rect(14, 55, 182, 25, "F");
+        doc.setFontSize(11);
+        doc.setTextColor(30, 41, 59);
+        doc.text("TOTAL COMPRAS", 20, 65);
+        doc.text("ITBIS ADELANTADO", 80, 65);
+        doc.text("CANT. FACTURAS", 150, 65);
+        
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text(`RD$ ${stats.total.toLocaleString()}`, 20, 74);
+        doc.text(`RD$ ${stats.itbis.toLocaleString()}`, 80, 74);
+        doc.text(`${stats.count}`, 150, 74);
+
+        // Table
+        const tableRows = filtered.map(inv => [
+            inv.fecha,
+            inv.emisor,
+            inv.rnc,
+            inv.ncf,
+            inv.monto_total?.toLocaleString(),
+            inv.itbis_total?.toLocaleString(),
+            inv.estado.toUpperCase()
+        ]);
+
+        autoTable(doc, {
+            startY: 90,
+            head: [["Fecha", "Emisor", "RNC", "NCF", "Monto", "ITBIS", "Estado"]],
+            body: tableRows,
+            theme: "striped",
+            headStyles: { fillColor: [59, 130, 246] },
+            styles: { fontSize: 8 }
+        });
+
+        doc.save(`Fluxia_Reporte_${period.month}_${period.year}.pdf`);
     };
 
     return (
@@ -98,6 +156,9 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                 <div style={{ display: "flex", gap: 12 }}>
                     <button className="btn-primary" onClick={handleExport606Txt} style={{ flex: 1 }}>
                         <Icon d={icons.layers} size={16} /> Exportar .TXT (606)
+                    </button>
+                    <button className="btn-secondary" onClick={handleExportPDF} style={{ flex: 1, background: "#ef4444", color: "white", borderColor: "#ef4444" }}>
+                        <Icon d={icons.sheet} size={16} color="white" /> Descargar PDF
                     </button>
                     <button className="btn-secondary" onClick={handleExportOfficial} style={{ flex: 1 }}>
                         <Icon d={icons.zap} size={16} /> Exportar Excel DGII

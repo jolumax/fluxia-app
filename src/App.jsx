@@ -30,6 +30,15 @@ export default function App() {
     const [searchTerm, setSearchTerm] = useState("");
     const [isGlobalLocked, setIsGlobalLocked] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [theme, setTheme] = useState(() => localStorage.getItem("fluxia-theme") || "dark");
+    
+    // Uygulama Teması Değişikliği
+    useEffect(() => {
+        document.documentElement.setAttribute("data-theme", theme);
+        localStorage.setItem("fluxia-theme", theme);
+    }, [theme]);
+
+    const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
     
     const userId = session?.user?.id ?? null;
     const { credits, reloadCredits } = useCredits(userId);
@@ -173,6 +182,8 @@ export default function App() {
                             invoices={invoices} onSearch={setSearchTerm}
                             clients={clients} selectedClient={selectedClient} setSelectedClient={setSelectedClient}
                             onMenuClick={() => setIsSidebarOpen(true)}
+                            theme={theme}
+                            toggleTheme={toggleTheme}
                         />
                         {pages[page]}
                     </div>
