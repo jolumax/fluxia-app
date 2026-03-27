@@ -13,11 +13,20 @@ export function Reporteria({ invoices, credits, selectedClient }) {
         return invoices.filter(inv => {
             const raw = inv.fecha_emision;
             if (!raw || raw === "—") return false;
-            // YYYY-MM-DD → split directo, sin Date() para evitar UTC offset
-            const parts = raw.split("-");
-            if (parts.length < 2) return false;
-            const year = parseInt(parts[0]);
-            const month = parseInt(parts[1]);
+
+            let month, year;
+            if (raw.includes("/")) {
+                // DD/MM/YYYY
+                const parts = raw.split("/");
+                month = parseInt(parts[1]);
+                year = parseInt(parts[2]);
+            } else if (raw.includes("-")) {
+                // YYYY-MM-DD
+                const parts = raw.split("-");
+                year = parseInt(parts[0]);
+                month = parseInt(parts[1]);
+            } else return false;
+
             return month === period.month && year === period.year;
         });
     }, [invoices, period]);

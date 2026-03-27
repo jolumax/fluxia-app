@@ -43,21 +43,27 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                         const f = r.fields;
                         const rawMonto = parseFloat(f.Total || f.monto_total || 0);
                         const rawItbis = parseFloat(f.ITBIS || f.itbis_total || 0);
-                        const rawFecha = f["Fecha de Factura"] || f.fecha || f.fecha_emision || "—";
+
+                        // Fix: nombre exacto de columna en Airtable con paréntesis
+                        const rawFecha = f["Fecha de Factura (fecha)"] || f["Fecha de Factura"] || f.fecha || f.fecha_emision || "—";
+
+                        // Normalizar fecha a DD/MM/YYYY
+                        const normFecha = normalizarFecha(rawFecha);
+
                         const rawEmisorRnc = f["ID Fiscal"] || f["RNC Emisor"] || f.rnc || "—";
 
                         return {
                             id: f.request_id || r.id.substring(0, 8),
                             emisor: f.Emisor || f.Nombre_Emisor || "Desconocido",
                             rnc: rawEmisorRnc,
-                            rnc_emisor: rawEmisorRnc, // Compatibilidad con Reporteria
+                            rnc_emisor: rawEmisorRnc,
                             ncf: f.ncf || f.NCF || "—",
                             monto: `RD$${rawMonto.toLocaleString("es-DO")}`,
-                            monto_total: rawMonto, // Para cálculos
+                            monto_total: rawMonto,
                             itbis: `RD$${rawItbis.toLocaleString("es-DO")}`,
-                            itbis_total: rawItbis, // Para cálculos
-                            fecha: rawFecha,
-                            fecha_emision: rawFecha, // Compatibilidad con Reporteria
+                            itbis_total: rawItbis,
+                            fecha: normFecha,
+                            fecha_emision: normFecha,
                             estado: f.status === "duplicate" ? "duplicado" : (f["NCF Válido"] || f.ncf_valido ? "valido" : "error"),
                             credito: f["Tipo de NCF"] || f.tipo_ncf ? (f["Tipo de NCF"] || f.tipo_ncf).substring(0, 3) : "B01",
                             driveFileId: f.drive_file_id || f.file_id || null,
@@ -77,4 +83,35 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
     }, [userId, credits, reload, selectedClientRNC]);
 
     return { invoices, loading, reloadInvoices };
+}
+
+// Normaliza cualquier formato de fecha a DD/MM/YYYY
+function normalizarFecha(raw) {
+    if (!raw || raw === "—") return "—";
+
+    // Ya es DD/MM/YYYY o D/M/YYYY
+    if (raw.includes("/")) {
+        const parts = raw.split("/");
+        if (parts.length === 3) {
+            const d = parts[0].padStart(2, "0");
+            const m = parts[1].padStart(2, "0");
+            const y = parts[2];
+            return `${d}/${m}/${y}`;
+        }
+    }
+
+    // YYYY-MM-DD
+    if (raw.includes("-")) {
+        const parts = raw.split("-");
+        if (parts.length === 3) {
+            // Detectar si es YYYY-MM-DD o DD-MM-YYYY
+            if (parts[0].length === 4) {
+                return `${parts[2].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[0]}`;
+            } else {
+                return `${parts[0].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[2]}`;
+            }
+        }
+    }
+
+    return raw;
 }
