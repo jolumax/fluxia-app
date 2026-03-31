@@ -8,14 +8,16 @@ export function Estadisticas({ invoices }) {
     const conError = invData.filter(i => i.estado === "error").length;
     const duplicadas = invData.filter(i => i.estado === "duplicado").length;
     
-    // Agrupar por mes
+    // Agrupar por mes (Solo GASTOS 606)
     const chartData = useMemo(() => {
         const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
         const now = new Date();
         const year = now.getFullYear();
         
+        const gastosData = invData.filter(i => i.tipo_fiscal === "606");
+        
         return months.map((m, i) => {
-            const monthFiltered = invData.filter(inv => {
+            const monthFiltered = gastosData.filter(inv => {
                 const d = new Date(inv.fecha);
                 return d.getMonth() === i && d.getFullYear() === year;
             });
@@ -26,7 +28,7 @@ export function Estadisticas({ invoices }) {
 
     const topProveedores = useMemo(() => {
         const counts = {};
-        invData.forEach(inv => {
+        invData.filter(i => i.tipo_fiscal === "606").forEach(inv => {
             counts[inv.emisor] = (counts[inv.emisor] || 0) + (inv.monto_total || 0);
         });
         return Object.entries(counts)

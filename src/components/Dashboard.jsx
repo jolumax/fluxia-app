@@ -3,7 +3,7 @@ import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { Skeleton } from "./common/Skeleton";
 import { StatusBadge } from "./common/StatusBadge";
-import { checkNCFAlerts, suggestExpenseCategory } from "../utils/helpers";
+import { checkNCFAlerts, suggestExpenseCategory, validateNCF } from "../utils/helpers";
 import { export606Official } from "../utils/exportLogic";
 import { bulkUpdateInvoiceStatus } from "../utils/airtableActions";
 import { InvoiceEditModal } from "./InvoiceEditModal";
@@ -40,16 +40,21 @@ function FacturasAVencer({ invoices }) {
     );
 }
 
-export function Dashboard({ setPage, invoices, dataLoading, credits, selectedClient, reloadInvoices, deleteInvoice, editInvoice }) {
+export function Dashboard({ setPage, invoices, mockInvoices, setMockInvoices, dataLoading, credits, selectedClient, reloadInvoices, deleteInvoice, editInvoice }) {
     const [selectedIds, setSelectedIds] = useState([]);
     const [isUpdating, setIsUpdating] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState(null);
 
+    // Combinar facturas reales con mocks de prueba
+    const allInvoices = useMemo(() => {
+        return [...(invoices || []), ...mockInvoices];
+    }, [invoices, mockInvoices]);
+
     const toggleSelectAll = () => {
-        if (selectedIds.length === (invoices || []).length) {
+        if (selectedIds.length === (allInvoices || []).length) {
             setSelectedIds([]);
         } else {
-            setSelectedIds((invoices || []).map(inv => inv.airtableId));
+            setSelectedIds((allInvoices || []).map(inv => inv.airtableId || inv.id));
         }
     };
 
@@ -75,25 +80,41 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
     const handleExportExcel = () => {
         const rnc = (credits?.rnc || selectedClient?.rnc || "000000000").replace(/[^0-9]/g, "");
         const periodoStr = new Date().toISOString().substring(0, 7).replace("-", "");
-        export606Official(invoices, rnc, periodoStr);
+        export606Official(allInvoices, rnc, periodoStr);
     };
     const stats = useMemo(() => {
-        if (!invoices) return { total: 0, itbis: 0, pending: 0, errors: 0 };
-        const data = invoices;
-        const total = data.reduce((acc, inv) => acc + (parseFloat((inv.monto || "0").replace(/[^0-9.]/g, "")) || 0), 0);
-        const itbis = data.reduce((acc, inv) => acc + (parseFloat((inv.itbis || "0").replace(/[^0-9.]/g, "")) || 0), 0);
+        if (!allInvoices) return { total: 0, itbis: 0, pending: 0, errors: 0, itbis_ventas: 0, itbis_compras: 0, ventas_totales: 0, gastos_totales: 0, fiscalRisks: 0 };
+        const data = allInvoices;
+        
+        const gastos_totales = data.filter(i => i.tipo_fiscal === "606").reduce((acc, inv) => acc + (inv.monto_total || 0), 0);
+        const ventas_totales = data.filter(i => i.tipo_fiscal === "607").reduce((acc, inv) => acc + (inv.monto_total || 0), 0);
+        
+        const itbis_compras = data.filter(i => i.tipo_fiscal === "606").reduce((acc, inv) => acc + (inv.itbis_total || 0), 0);
+        const itbis_ventas = data.filter(i => i.tipo_fiscal === "607").reduce((acc, inv) => acc + (inv.itbis_total || 0), 0);
+        
         const pending = data.filter(i => i.estado === "revision").length;
         const errors = data.filter(i => i.estado === "error").length;
-        const facturasTotales = data.length;
-        const procesadasOk = data.filter(i => i.estado === "valido").length;
+        const fiscalRisks = data.filter(i => !validateNCF(i.ncf, i.tipo_fiscal).valid).length;
         
-        // Breakdown for the charts
-        const b01 = data.filter(i => i.ncf && i.ncf.startsWith("B01") || i.ncf && i.ncf.startsWith("E31")).length;
-        const b02 = data.filter(i => i.ncf && i.ncf.startsWith("B02") || i.ncf && i.ncf.startsWith("E32")).length;
-        const b04 = data.filter(i => i.ncf && i.ncf.startsWith("B04") || i.ncf && i.ncf.startsWith("E34")).length;
+        const b01 = data.filter(i => i.ncf && (i.ncf.startsWith("B01") || i.ncf.startsWith("E31"))).length;
+        const b02 = data.filter(i => i.ncf && (i.ncf.startsWith("B02") || i.ncf.startsWith("E32"))).length;
+        const b04 = data.filter(i => i.ncf && (i.ncf.startsWith("B04") || i.ncf.startsWith("E34"))).length;
         
-        return { total, itbis, pending, errors, facturasTotales, procesadasOk, validas: procesadasOk, conError: errors, b01, b02, b04 };
-    }, [invoices]);
+        return { 
+            ventas_totales, 
+            gastos_totales, 
+            itbis: itbis_compras, 
+            facturasTotales: data.length, 
+            pending, 
+            errors, 
+            conError: errors,
+            validas: data.filter(i => i.estado === "valido").length,
+            fiscalRisks,
+            b01, b02, b04,
+            itbis_ventas,
+            itbis_a_pagar: itbis_ventas - itbis_compras
+        };
+    }, [allInvoices]);
 
     if (dataLoading) {
         return (
@@ -146,22 +167,25 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 20, marginBottom: 32 }}>
                 {[
-                    { label: "FACTURAS TOTALES", val: stats.facturasTotales, icon: icons.file, color: "var(--text-primary)", sub: "Este mes" },
-                    { label: "PROCESADAS OK", val: stats.procesadasOk, icon: icons.check, color: "var(--success)" },
-                    { label: "EN REVISIÓN", val: stats.pending, icon: icons.search, color: "var(--warning)", sub: "Pendientes" },
+                    { label: "INGRESOS (607)", val: credits?.plan === "basic" ? "💎 Lock" : `RD$${stats.ventas_totales.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`, icon: icons.trending, color: "var(--success)", locked: credits?.plan === "basic" },
+                    { label: "GASTOS (606)", val: `RD$${stats.gastos_totales.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`, icon: icons.layers, color: "var(--accent)" },
+                    { label: "ITBIS A PAGAR (EST.)", val: credits?.plan === "basic" ? "💎 Lock" : `RD$${stats.itbis_a_pagar.toLocaleString("es-DO", { minimumFractionDigits: 2 })}`, icon: icons.zap, color: stats.itbis_a_pagar > 0 ? "var(--danger)" : "var(--success)", sub: "Saldo del Mes", locked: credits?.plan === "basic" },
+                    { label: "RIESGO FISCAL", val: stats.fiscalRisks, icon: icons.alert, color: stats.fiscalRisks > 0 ? "var(--danger)" : "var(--success)", sub: "No Deducibles" },
                     { label: "CON ERRORES", val: stats.errors, icon: icons.x, color: "var(--danger)", sub: "Requerido" },
-                    { label: "GASTOS TOTALES", val: `RD$${stats.total.toLocaleString()}`, icon: icons.layers, color: "var(--accent)" },
-                    { label: "ITBIS ADELANTADO", val: `RD$${stats.itbis.toLocaleString()}`, icon: icons.zap, color: "var(--success)", sub: "Deducible" },
+                    { label: "FACTURAS TOTALES", val: stats.facturasTotales, icon: icons.file, color: "var(--text-primary)", sub: "Este mes" },
                 ].map((k, i) => (
-                    <div key={i} className="kpi-card">
+                    <div key={i} className={`kpi-card ${k.locked ? "locked-kpi" : ""}`} style={{ position: "relative" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                             <div style={{ width: 34, height: 34, background: `${k.color}15`, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
                                 <Icon d={k.icon} size={16} stroke={k.color} />
                             </div>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>{k.sub}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>{k.sub || (k.locked ? "PRO Feature" : "Info")}</span>
                         </div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4 }}>{k.label}</div>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", letterSpacing: -0.5 }}>{k.val}</div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: k.locked ? "var(--accent)" : "var(--text-primary)", letterSpacing: -0.5 }}>{k.val}</div>
+                        {k.locked && (
+                            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.05)", cursor: "pointer", borderRadius: 16 }} onClick={() => { alert("🔒 Esta función disponible en Plan Pro Y Premium"); window.location.href = "/?plan=pro"; }} title="Mejora a un plan PRO para desbloquear" />
+                        )}
                     </div>
                 ))}
             </div>
@@ -244,6 +268,57 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
                         <button className="btn-secondary" onClick={handleExportExcel} style={{ fontSize: 12, padding: "6px 14px", height: "auto" }}>
                             <Icon d={icons.zap} size={14} /> Exportar Excel
                         </button>
+                        <button className="btn-ghost" onClick={() => {
+                            if (window.confirm("¿Deseas generar una simulación de factura con errores fiscales para validar el sistema gráficamente?")) {
+                                const d = new Date();
+                                const todayISO = d.toISOString().split("T")[0]; // YYYY-MM-DD
+                                const todayLocal = d.toLocaleDateString("es-DO"); // DD/MM/YYYY
+
+                                // 1. Riesgo B02 en Gastos
+                                const newMock1 = {
+                                    id: "TEST-01",
+                                    emisor: "SOPORTE FLUXIA (SIMULACIÓN DE RIESGO B02)",
+                                    rnc: "101999999",
+                                    ncf: "B0200000001", // ERROR: B02 en un 606
+                                    monto: "RD$1,500.00",
+                                    monto_total: 1500.00,
+                                    itbis: "RD$270.00",
+                                    itbis_total: 270.00,
+                                    fecha: todayISO,
+                                    fecha_emision: todayLocal,
+                                    tipo_fiscal: "606",
+                                    estado: "valido",
+                                    isMock: true
+                                };
+
+                                // 2. Riesgo de Extemporaneidad (Factura vieja)
+                                const dOld = new Date();
+                                dOld.setMonth(dOld.getMonth() - 2); // Hace 2 meses
+                                const oldISO = dOld.toISOString().split("T")[0];
+                                const oldLocal = dOld.toLocaleDateString("es-DO");
+
+                                const newMock2 = {
+                                    id: "TEST-02",
+                                    emisor: "SOPORTE FLUXIA (EXTEMPORÁNEA)",
+                                    rnc: "101999999",
+                                    ncf: "B0100000123", // Valido
+                                    monto: "RD$3,000.00",
+                                    monto_total: 3000.00,
+                                    itbis: "RD$540.00",
+                                    itbis_total: 540.00,
+                                    fecha: oldISO,
+                                    fecha_emision: oldLocal,
+                                    tipo_fiscal: "606",
+                                    estado: "valido",
+                                    isMock: true
+                                };
+
+                                setMockInvoices([newMock1, newMock2, ...mockInvoices]);
+                                alert("Simulación activada. Se ha inyectado una factura con riesgo fiscal en la vista actual.");
+                            }
+                        }} style={{ fontSize: 11, padding: "6px 14px", height: "auto", border: "1px dashed var(--accent)", color: "var(--accent)", background: "var(--accent-glow)" }}>
+                            🧪 Simular Riesgo
+                        </button>
                         <button className="btn-ghost" onClick={() => setPage("procesar")}>Ver todo →</button>
                     </div>
                 </div>
@@ -253,7 +328,7 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
                             <tr>
                                 <th style={{ width: 40 }}>
                                     <div 
-                                        className={`checkbox-custom ${selectedIds.length > 0 && selectedIds.length === (invoices || []).length ? "checked" : ""}`}
+                                        className={`checkbox-custom ${selectedIds.length > 0 && selectedIds.length === (allInvoices || []).length ? "checked" : ""}`}
                                         onClick={toggleSelectAll}
                                     />
                                 </th>
@@ -262,16 +337,18 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
                                 <th>NCF</th>
                                 <th>MONTO</th>
                                 <th>ESTADO</th>
+                                {credits?.plan !== "basic" && <th>TIPO</th>}
                                 <th>TAG</th>
+                                <th>ACCIONES</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {(invoices || []).slice(0, 8).map((inv, i) => (
-                                <tr key={inv.airtableId || i} className={`hover-row ${selectedIds.includes(inv.airtableId) ? "selected-row" : ""}`} onClick={() => toggleSelect(inv.airtableId)}>
+                            {(allInvoices || []).slice(0, 8).map((inv, i) => (
+                                <tr key={inv.airtableId || inv.id || i} className={`hover-row ${selectedIds.includes(inv.airtableId || inv.id) ? "selected-row" : ""}`} onClick={() => toggleSelect(inv.airtableId || inv.id)}>
                                     <td>
                                         <div 
-                                            className={`checkbox-custom ${selectedIds.includes(inv.airtableId) ? "checked" : ""}`}
-                                            onClick={(e) => { e.stopPropagation(); toggleSelect(inv.airtableId); }}
+                                            className={`checkbox-custom ${selectedIds.includes(inv.airtableId || inv.id) ? "checked" : ""}`}
+                                            onClick={(e) => { e.stopPropagation(); toggleSelect(inv.airtableId || inv.id); }}
                                         />
                                     </td>
                                     <td>{inv.fecha}</td>
@@ -279,9 +356,30 @@ export function Dashboard({ setPage, invoices, dataLoading, credits, selectedCli
                                         <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{inv.emisor}</div>
                                         <div style={{ fontSize: 11 }}>{inv.rnc}</div>
                                     </td>
-                                    <td style={{ fontFamily: "monospace", fontSize: 12 }}>{inv.ncf}</td>
+                                    <td style={{ fontFamily: "monospace", fontSize: 12, position: "relative" }}>
+                                        {inv.ncf}
+                                        {validateNCF(inv.ncf, inv.tipo_fiscal).valid === false && (
+                                            <span 
+                                                style={{ marginLeft: 8, cursor: "help" }} 
+                                                title={validateNCF(inv.ncf, inv.tipo_fiscal).message}
+                                            >
+                                                <Icon d={icons.alert} size={14} stroke={validateNCF(inv.ncf, inv.tipo_fiscal).severity === 'error' ? "var(--danger)" : "var(--warning)"} />
+                                            </span>
+                                        )}
+                                    </td>
                                     <td style={{ fontWeight: 700 }}>{inv.monto}</td>
                                     <td><StatusBadge status={inv.estado} /></td>
+                                    {credits?.plan !== "basic" && (
+                                        <td>
+                                            <span style={{ 
+                                                fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6,
+                                                background: inv.tipo_fiscal === "607" ? "rgba(16,185,129,0.1)" : "rgba(59,130,246,0.1)",
+                                                color: inv.tipo_fiscal === "607" ? "var(--success)" : "var(--accent)"
+                                            }}>
+                                                {inv.tipo_fiscal}
+                                            </span>
+                                        </td>
+                                    )}
                                     <td><span className="tag">{suggestExpenseCategory(inv.concepto)}</span></td>
                                     <td>
                                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>

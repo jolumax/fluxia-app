@@ -1,0 +1,2792 @@
+{
+  "name": "FLUXIA —Cloud",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "db7fa59c-f27f-4124-9401-946615caeadd",
+              "leftValue": "={{ $('📋 Preparar Payload').isExecuted }}",
+              "rightValue": "telegram",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2176,
+        -2128
+      ],
+      "id": "d47d43b3-a012-4806-b299-408ffda9ef53",
+      "name": "🔀 ¿Canal Telegram?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg = $('📋 Preparar Payload').isExecuted;\nconst b64Raw = tg \n  ? $('📋 Preparar Payload').first().json.file_base64\n  : $('✅ Validar Payload Entrante').first().json.file_base64;\n\nconst b64 = b64Raw.includes('base64,') \n  ? b64Raw.split('base64,').pop() \n  : b64Raw;\n\nconst supabase = $('🗄️ Obtener Config del Usuario (Supabase)').isExecuted;\nconst customPrompt = supabase\n  ? ($('🗄️ Obtener Config del Usuario (Supabase)').first().json.prompt ?? null)\n  : null;\n\nconst plan = $('✅ Validar Payload Entrante').isExecuted\n  ? ($('✅ Validar Payload Entrante').first().json.plan ?? 'basic')\n  : $('📋 Preparar Payload').isExecuted\n    ? ($('📋 Preparar Payload').first()?.json?.plan ?? 'basic')\n    : 'basic';\n\nconst promptGeneral = `Eres un experto en facturas dominicanas. Analiza la imagen y devuelve ÚNICAMENTE un JSON válido sin markdown ni explicaciones.\n\nEMISOR vs CLIENTE — REGLA ABSOLUTA:\n- EMISOR = negocio que vende. Siempre en el membrete/logo/encabezado superior.\n- CLIENTE = quien compra. Aparece en \"Nombre:\", \"A nombre de:\", \"Cliente:\" dentro del cuerpo.\n- NUNCA uses el mismo nombre para ambos.\n\nNCF: Siempre B + 10 dígitos. Corrige \"801\"→\"B01\", \"BO1\"→\"B01\". Tipos: B01-B04, B11-B17.\nRNC: Solo dígitos. 9 para empresas, 11 para personas.\n\nDevuelve este JSON exacto:\n{\n  \"emisor\": \"nombre del negocio emisor del membrete\",\n  \"cliente\": \"nombre del cliente del cuerpo\",\n  \"id_fiscal_emisor\": \"RNC emisor solo dígitos\",\n  \"id_fiscal_cliente\": \"RNC cliente solo dígitos o N/A\",\n  \"numero_factura\": \"número interno o N/A\",\n  \"ncf\": \"NCF comenzando con B\",\n  \"fecha_emision\": \"YYYY-MM-DD\",\n  \"fecha_vencimiento\": \"YYYY-MM-DD o N/A\",\n  \"subtotal\": 0.00,\n  \"impuestos\": 0.00,\n  \"total\": 0.00,\n  \"moneda\": \"DOP\",\n  \"concepto\": \"descripción breve general\"\n}`;\n\n// Output 0: body limpio para mini OCR\n// Output 1: metadatos para rama GPT-4o (b64 + plan)\nreturn [\n  {\n    json: {\n      model: \"gpt-4o-mini\",\n      max_tokens: 800,\n      messages: [{\n        role: \"user\",\n        content: [\n          { type: \"image_url\", image_url: { url: `data:image/jpeg;base64,${b64}` }},\n          { type: \"text\", text: customPrompt ?? promptGeneral }\n        ]\n      }]\n    }\n  },\n  {\n    json: {\n      _b64: b64,\n      _plan: plan\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        -2400
+      ],
+      "id": "b6474d41-5b93-4f52-a97d-4ff3b510eab4",
+      "name": "🤖 Preparar Body OCR"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtenemos la data del OCR validado y los metadatos iniciales\nconst invoice = $('⚙️ Normalizar + Validar NCF (DGII)').first().json.invoice;\nconst meta = $('✅ Validar Payload Entrante').first().json;\n\n// Usamos la fecha detectada o la de hoy si falla\nconst rawDate = invoice.fecha_emision || new Date().toISOString().split('T')[0];\n\nreturn [{\n  json: {\n    \"user_id\": meta.user_id,\n    \"request_id\": meta.request_id || `REQ-${Date.now()}`,\n    \"Fecha de Factura (fecha)\": rawDate,\n    \"Emisor\": invoice.emisor || \"Desconocido\",\n    \"ID Fiscal (id_fiscal)\": invoice.id_fiscal_emisor?.toString() || \"\",\n    \"factura\": invoice.numero_factura || \"\",\n    \"ncf\": invoice.ncf || \"\",\n    \"ITBIS\": parseFloat(invoice.itbis || 0),\n    \"Total\": parseFloat(invoice.total || 0),\n    \"Subtotal\": parseFloat(invoice.subtotal || 0),\n    \"Concepto\": invoice.concepto || \"Otros\",\n    \"Archivo de Factura (drive_file_id)\": meta.drive_file_url || \"\",\n    \"Procesado en (procesado_en)\": new Date().toISOString(),\n    \"status\": \"procesado\",\n    \"rnc_empresa\": meta.rnc_empresa,\n    \"tipo_fiscal\": meta.tipo_fiscal || \"606\",\n    \"Detalle Articulos\": JSON.stringify(invoice.detalle_articulos || [])\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        -2304
+      ],
+      "id": "f6541252-b2b0-497a-9cf5-09497935bb54",
+      "name": "📋 Preparar Campos Airtable"
+    },
+    {
+      "parameters": {
+        "url": "https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "=eq.{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.user_id }}"
+            },
+            {
+              "name": "select",
+              "value": "creditos_usados,creditos_limite"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "db4956fb-3947-463f-b94a-63e534ba2ece",
+      "name": "🔢 Leer Créditos Actuales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1792,
+        -2128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6d791bcf-8a01-4366-9dfd-f1a386388957",
+      "name": "🔀 ¿Es Foto Válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2496,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const supabaseResult = $('🔍 Buscar Usuario por Chat ID').first().json;\nconst userData = Array.isArray(supabaseResult) ? supabaseResult[0] : supabaseResult;\n\nconst b64Data = $('🔄 Convertir a Base64').first().json;\n\nif (!userData || !userData.id) {\n  throw new Error('Usuario no registrado. Tu Telegram Chat ID no está vinculado a ninguna cuenta Fluxia.');\n}\n\nreturn [{\n  json: {\n    user_id: userData.id,\n    file_base64: b64Data.file_base64,\n    file_name: b64Data.file_name,\n    file_type: b64Data.file_type,\n    audit_mode: false,\n    _tg_source: true,\n    _tg_chat_id: b64Data.chatId,\n    request_id: `REQ-${Date.now()}-${userData.id.substring(0,8)}`  // ← línea nueva\n  }\n}];"
+      },
+      "id": "2f714ebc-2487-4f43-8852-b5329ea41cb0",
+      "name": "📋 Preparar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/usuarios?telegram_chat_id=eq.{{ $('⬇️ Preparar Descarga').first().json.chatId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b986fbd5-7f3d-43ef-91e8-daa6dcd44aec",
+      "name": "🔍 Buscar Usuario por Chat ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1296,
+        -2448
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst binaryData = item.binary?.data;\n\nif (!binaryData) throw new Error('No se encontró archivo binario');\n\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst base64 = buffer.toString('base64');\n\nconst chatId = $('⬇️ Preparar Descarga').first().json.chatId;\nconst caption = $('⬇️ Preparar Descarga').first().json.caption ?? '';\n\nreturn [{\n  json: {\n    chatId,\n    caption,\n    file_base64: `data:image/jpeg;base64,${base64}`,\n    file_name: 'factura_telegram.jpg',\n    file_type: 'jpg',\n    audit_mode: false,\n    _tg_source: true\n  }\n}];"
+      },
+      "id": "3ce3c911-c068-4010-9f40-96565d1d759e",
+      "name": "🔄 Convertir a Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/file/bot8783605609:AAGj3Z4yYfrZVPyhAXoCfFWdV4C5UUa9z3I/{{ $('⬇️ Preparar Descarga').first().json.filePath }}",
+        "options": {}
+      },
+      "id": "178cc9c3-3140-4a92-b10b-c939710fb408",
+      "name": "📥 Descargar Imagen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1776,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fileData = $input.first().json;\nconst chatId = $('✅ Validar Foto Telegram').first().json.chatId;\nconst userId = $('✅ Validar Foto Telegram').first().json.userId;\nconst caption = $('✅ Validar Foto Telegram').first().json.caption ?? '';\n\n// Obtener el bot token de las credenciales no es directo en Code node\n// Usamos el file_path del response anterior\nconst filePath = fileData.result?.file_path;\nif (!filePath) throw new Error('No se pudo obtener el archivo de Telegram');\n\nreturn [{\n  json: {\n    chatId,\n    userId,\n    caption,\n    filePath,\n    // file_base64 se construirá en el siguiente nodo HTTP\n    _tg_source: true\n  }\n}];"
+      },
+      "id": "c5ef1906-223c-4943-a483-ad73f02112c8",
+      "name": "⬇️ Preparar Descarga",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.telegram.org/bot8783605609:AAGj3Z4yYfrZVPyhAXoCfFWdV4C5UUa9z3I/getFile?file_id={{ $('✅ Validar Foto Telegram').first().json.fileId }}",
+        "options": {}
+      },
+      "id": "09f5912f-9dd7-4daa-9dda-033adcb601f2",
+      "name": "🔗 Obtener URL Archivo (Telegram)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2256,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.errorMsg }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "73f1e417-5c6b-4900-9595-ccd69a7f4c35",
+      "name": "❌ Avisar — No es Foto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2256,
+        -2592
+      ],
+      "webhookId": "4e0af228-123e-4d27-aee2-fc8d573cabbf",
+      "credentials": {
+        "telegramApi": {
+          "id": "t1ff5bL2II5ppCd5",
+          "name": "Telegram Fluxia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message ?? {};\nconst photo = msg.photo;\nconst document = msg.document;\nconst chatId = msg.chat?.id?.toString();\nconst userId = msg.from?.id?.toString();\n\nif (!photo && !document) {\n  // No es foto — responder al usuario\n  return [{\n    json: {\n      _skip: true,\n      chatId,\n      errorMsg: '⚠️ Por favor envía una *foto* o imagen de tu factura.'\n    }\n  }];\n}\n\n// Obtener el file_id de la foto (mayor resolución)\nconst fileId = photo \n  ? photo[photo.length - 1].file_id \n  : document.file_id;\n\nreturn [{\n  json: {\n    _skip: false,\n    chatId,\n    userId,\n    fileId,\n    caption: msg.caption ?? ''\n  }\n}];"
+      },
+      "id": "6968e0f5-a313-4574-a8b5-623e84b65794",
+      "name": "✅ Validar Foto Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2736,
+        -2400
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "0430d527-1a63-40bf-b252-12fe5e3950dc",
+      "name": "📱 Telegram — Recibir Foto",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2976,
+        -2400
+      ],
+      "webhookId": "fluxia-telegram-foto",
+      "credentials": {
+        "telegramApi": {
+          "id": "t1ff5bL2II5ppCd5",
+          "name": "Telegram Fluxia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ $json._filename }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('✅ Validar Payload Entrante').item.json.drive_folder_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "0db72497-bc79-4a85-b8c1-bee9d5d36e30",
+      "name": "💾 Guardar en Drive del Usuario",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1984,
+        -2464
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "NUTAax6WWSObJRSo",
+          "name": "Google Drive JL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convertir base64 a binario y preparar para Drive\nconst normalizar = $('⚙️ Normalizar + Validar NCF (DGII)').first().json;\nconst b64raw = $('🔄 Convertir Base64 a Binario').first().json.file_base64 \n  ?? $('🔄 Convertir Base64 a Binario').first().json.archivo_base64 \n  ?? '';\nconst clean = b64raw.includes(',') ? b64raw.split(',')[1] : b64raw;\nconst buf = Buffer.from(clean, 'base64');\n\nconst emisor = String(normalizar.invoice?.emisor ?? 'factura').replace(/[^a-zA-Z0-9]/g, '_');\nconst ncf    = String(normalizar.invoice?.ncf ?? 'sin_ncf').replace(/[^a-zA-Z0-9]/g, '_');\nconst fecha  = String(normalizar.invoice?.fecha_emision ?? '').replace(/\\//g, '-');\nconst filename = `${emisor}_${ncf}_${fecha}.jpg`;\n\nreturn [{\n  json: { ...normalizar, _filename: filename },\n  binary: {\n    data: await this.helpers.prepareBinaryData(buf, filename, 'image/jpeg')\n  }\n}];"
+      },
+      "id": "e9eb1ba9-56f4-4df6-8f36-41f84ee02287",
+      "name": "📎 Preparar Binario para Drive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1552,
+        -2304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "b0abe60d-91e8-4967-b5ff-23b805bfd418",
+      "name": "🤖 Analyze Image (GPT-4o-mini OCR)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        176,
+        -2400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $json.id }}/permissions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"role\": \"reader\", \"type\": \"anyone\"}",
+        "options": {}
+      },
+      "id": "6fdee3ef-4da7-44d1-96d4-a632c7cd6bf3",
+      "name": "🔓 Hacer Público (Drive)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -256,
+        -2400
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "qJf91Z0hIdUufCJW",
+          "name": "Google Drive account Public"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ 'temp_ocr_' + ($json.request_id ?? Date.now()) + '.jpg' }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1PgkAJbmqkxm8hYgWhGal_kwR-_vaFVmL"
+        },
+        "options": {}
+      },
+      "id": "b251fe28-18a5-43f9-bcdd-c37494df217e",
+      "name": "📤 Subir Imagen Temp (Drive)",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -480,
+        -2400
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "NUTAax6WWSObJRSo",
+          "name": "Google Drive JL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst b64 = (input.file_base64 ?? input.archivo_base64 ?? '');\nconst clean = b64.includes(',') ? b64.split(',')[1] : b64;\n\nreturn [{\n  json: { ...input },\n  binary: {\n    data: {\n      data: clean,\n      mimeType: 'image/jpeg',\n      fileName: 'factura.jpg',\n      fileExtension: 'jpg'\n    }\n  }\n}];"
+      },
+      "id": "83296b4c-5c8a-49ef-9561-b596ac86a6da",
+      "name": "🔄 Convertir Base64 a Binario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        -2320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? $input.first().json;\nconst userId = body.user_id ?? null;\nconst mes = String(body.mes || '03').padStart(2, '0');\nconst anio = String(body.anio || '2026');\n\nif (!userId) throw new Error('DEBES ESTAR LOGUEADO (MISSING_USER_ID)');\n\n// Enviamos todo lo que viene de la App + los datos formateados\nreturn [{ \n  json: { \n    ...body, \n    user_id: userId, \n    mes, \n    anio, \n    periodo: `${anio}${mes}` \n  } \n}];\n"
+      },
+      "id": "ff63cccb-1d6a-4fb8-b99e-40c08b1776d7",
+      "name": "✅ Validar Parámetros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2768,
+        -1200
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluxia/exportar-606",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "fd6ad291-d441-4f55-ab23-8a5a8740e126",
+      "name": "🌐 Webhook — Exportar 606",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3008,
+        -1200
+      ],
+      "webhookId": "ce5b30cd-1029-4c8e-b2a6-e5041d9768c7"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Captura errores de cualquier nodo y los formatea\nconst error = $input.first();\nconst msg = error?.json?.message ?? error?.json?.error ?? 'Error desconocido';\nconst code = msg.includes(':') ? msg.split(':')[0].trim() : 'PROCESSING_ERROR';\n\nreturn [{\n  json: {\n    status: 'error',\n    error_code: code,\n    message: msg,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "3cef67c3-875b-44f2-afff-ff87010a7fb7",
+      "name": "🔴 Error Handler Global",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2032,
+        -2064
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"message\": \"{{ $input.first().json.message ?? 'Error interno en el procesamiento.' }}\",\n  \"code\": \"{{ $input.first().json.message?.split(':')[0] ?? 'UNKNOWN_ERROR' }}\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "24f22ff3-f90e-4938-97a8-ca1a3860d4b6",
+      "name": "❌ Respond to Webhook — Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1792,
+        -2064
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"duplicate\",\n  \"request_id\": \"{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.request_id }}\",\n  \"user_id\": \"{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.user_id }}\",\n  \"message\": \"Esta factura ya fue procesada anteriormente (NCF duplicado).\",\n  \"ncf\": \"{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.invoice.ncf }}\"\n}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "bffe6cba-767a-4f16-9bd3-857643baf1d0",
+      "name": "⚠️ Respond to Webhook — Duplicado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        -2672
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "5a8bb730-213c-4cdf-9d9c-0796c3963223",
+      "name": "✅ Respond to Webhook — Éxito",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2688,
+        -2048
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $if($('📋 Preparar Payload').isExecuted, $('📋 Preparar Payload').first().json._tg_chat_id, $('🗄️ Obtener Config del Usuario (Supabase)').first().json.telegram_chat_id) }}",
+        "text": "={{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.telegramMessage }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "b77f32d1-dfa1-4cce-9e06-d90221e7e94f",
+      "name": "📱 Notificar Éxito (Telegram/WhatsApp)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2448,
+        -2256
+      ],
+      "webhookId": "31c15f2b-f882-4f79-b58a-1685ed038543",
+      "credentials": {
+        "telegramApi": {
+          "id": "t1ff5bL2II5ppCd5",
+          "name": "Telegram Fluxia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?user_id=eq.{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.user_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creditos_usados",
+              "value": "={{ $('🔢 Leer Créditos Actuales').first().json.creditos_usados + 1 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "312d348c-986b-4ee4-9d4b-06cd7d60950f",
+      "name": "🔢 Incrementar Créditos Usados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1968,
+        -2128
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.airtable_base_id ?? 'appPfkS3Gi2CJEDuG' }}",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.airtable_table_id ?? 'tbl7XkZpew0ZU64rG' }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "2e47da9d-13cc-4504-b586-0476593ebe53",
+      "name": "📊 Guardar en Airtable (Multi-Tenant)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1984,
+        -2304
+      ],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "qsRPixN2FKHtziGX",
+          "name": "Airtable Personal Access Token JL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {}
+          ]
+        },
+        "options": {
+          "fallbackOutput": "nuevo"
+        }
+      },
+      "id": "7425c605-7a22-4f93-8bc2-1abd1ef7877f",
+      "name": "🚦 ¿Es Duplicado?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1328,
+        -2304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.config?.airtable_base_id ?? 'appPfkS3Gi2CJEDuG' }}",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "={{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.config?.airtable_table_id ?? 'tbl7XkZpew0ZU64rG' }}",
+          "mode": "id"
+        },
+        "filterByFormula": "=AND({ncf}='{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.invoice.ncf }}', {user_id}='{{ $('⚙️ Normalizar + Validar NCF (DGII)').first().json.user_id }}')",
+        "options": {
+          "fields": [
+            "ncf",
+            "user_id",
+            "factura"
+          ]
+        }
+      },
+      "id": "fb8e88f4-35ca-4676-b26b-0d6880624387",
+      "name": "🔄 Detectar Duplicados (Airtable)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1120,
+        -2304
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "qsRPixN2FKHtziGX",
+          "name": "Airtable Personal Access Token JL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Normalización Multi-Tenant + Validación NCF DGII ─────\nconst rawContent  = $input.first()?.json?.choices?.[0]?.message?.content ?? $input.first()?.json?.content ?? '{}';\nconst ctx = $('🔍 ¿Usuario existe y tiene créditos?').isExecuted\n  ? $('🔍 ¿Usuario existe y tiene créditos?').first().json\n  : { user_id: $('📋 Preparar Payload').first().json.user_id, config: {}, request_id: null };\nconst userId      = ctx.user_id;\nconst config      = ctx.config;\nconst requestId = ctx.request_id \n  ?? $('📋 Preparar Payload').first()?.json?.request_id \n  ?? null;\n\nlet invoiceData = {};\n\n// ── Helper: limpiar número ─────────────────────────────────\nconst toFloat = (text) => {\n  if (typeof text === 'number') return text;\n  if (!text || text === 'N/A') return 0;\n  return parseFloat(String(text).replace(/[^0-9.]+/g, '')) || 0;\n};\n\n// ── Helper: formatear moneda ───────────────────────────────\nconst fmt = (n) => new Intl.NumberFormat('es-DO', {\n  minimumFractionDigits: 2,\n  maximumFractionDigits: 2\n}).format(n);\n\n// ── Helper: parsear fecha a YYYY-MM-DD ────────────────────\nconst meses = {\n  'enero':1,'febrero':2,'marzo':3,'abril':4,'mayo':5,'junio':6,\n  'julio':7,'agosto':8,'septiembre':9,'octubre':10,'noviembre':11,'diciembre':12\n};\n\nconst parseFecha = (f) => {\n  if (!f || f === 'N/A') return null;\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(f)) return f;\n  const slash = f.match(/^(\\d{1,2})[\\/\\-](\\d{1,2})[\\/\\-](\\d{4})$/);\n  if (slash) {\n    return `${slash[3]}-${slash[2].padStart(2,'0')}-${slash[1].padStart(2,'0')}`;\n  }\n  const esp = f.toLowerCase().match(/(\\d{1,2})\\s+([a-záéíóúü]+)\\s+(\\d{4})/);\n  if (esp) {\n    const d = esp[1].padStart(2,'0');\n    const mes = String(meses[esp[2]] || 1).padStart(2,'0');\n    return `${esp[3]}-${mes}-${d}`;\n  }\n  const d = new Date(f);\n  return isNaN(d) ? null : d.toISOString().split('T')[0];\n};\n\n// ── Auto-corrección de errores OCR en NCF ─────────────────\nconst corregirNCF = (ncf) => {\n  if (!ncf || ncf === 'N/A') return ncf;\n  let s = String(ncf).trim().toUpperCase().replace(/\\s/g, '');\n\n  // Eliminar guiones o puntos internos: B01-00001234 → B0100001234\n  s = s.replace(/[-\\.]/g, '');\n\n  // Error más común: 8 o O en lugar de B al inicio\n  // 801XXXXXXXX → B01XXXXXXXX\n  if (/^[8O]\\d{10}$/.test(s)) {\n    s = 'B' + s.slice(1);\n  }\n\n  // BO1 → B01 (letra O confundida con cero)\n  s = s.replace(/^BO(\\d)/, 'B0$1');\n\n  // B0l → B01 (l minúscula confundida con 1)\n  s = s.replace(/^(B\\d)l/, '$11');\n\n  // Quitar prefijo \"NCF:\" o \"NCF \" si el modelo lo incluyó\n  s = s.replace(/^NCF[:\\s]*/i, '');\n\n  return s;\n};\n\n// ── Validar estructura NCF dominicano ─────────────────────\nconst validarNCF = (ncf) => {\n  if (!ncf || ncf === 'N/A') return { valid: false, tipo: null, motivo: 'NCF ausente' };\n  \n  const tipos = {\n    'B01': 'Crédito Fiscal',\n    'B02': 'Consumidor Final',\n    'B03': 'Nota de Débito',\n    'B04': 'Nota de Crédito',\n    'B11': 'Proveedores Informales',\n    'B12': 'Único Ingreso',\n    'B13': 'Gastos Menores',\n    'B14': 'Regímenes Especiales',\n    'B15': 'Gubernamental',\n    'B16': 'Exportaciones',\n    'B17': 'Pagos al Exterior'\n  };\n\n  const ncfUpper = String(ncf).toUpperCase().replace(/\\s/g, '');\n  const match = ncfUpper.match(/^(B\\d{2})(\\d{8})$/);\n  \n  if (!match) {\n    return { valid: false, tipo: null, motivo: `Formato inválido: '${ncf}'. Esperado: B01XXXXXXXX` };\n  }\n  \n  const codigo = match[1];\n  const secuencia = match[2];\n  const tipoNombre = tipos[codigo];\n  \n  if (!tipoNombre) {\n    return { valid: false, tipo: codigo, motivo: `Código NCF '${codigo}' no reconocido por DGII` };\n  }\n  \n  if (secuencia === '00000000') {\n    return { valid: false, tipo: codigo, motivo: 'Secuencia NCF inválida (todos ceros)' };\n  }\n  \n  return {\n    valid: true,\n    tipo: codigo,\n    tipo_nombre: tipoNombre,\n    ncf_normalizado: `${codigo}${secuencia}`,\n    motivo: null\n  };\n};\n\n// ── Parsear JSON de la IA ──────────────────────────────────\ntry {\n  const jsonMatch = rawContent.match(/\\{[\\s\\S]*\\}/);\n  if (!jsonMatch) throw new Error('La IA no devolvió un JSON válido.');\n  invoiceData = JSON.parse(jsonMatch[0]);\n} catch(e) {\n  return [{\n    json: {\n      status: 'error',\n      error_code: 'OCR_PARSE_ERROR',\n      error_message: e.message,\n      user_id: userId,\n      request_id: requestId\n    }\n  }];\n}\n\n// ── Normalizar campos ─────────────────────────────────────\nconst fields = ['emisor','cliente','id_fiscal_emisor','id_fiscal_cliente',\n  'numero_factura','ncf','fecha_emision','fecha_vencimiento','moneda','concepto'];\nfor (const f of fields) {\n  invoiceData[f] = invoiceData[f] || 'N/A';\n}\n\n// ── Aplicar auto-corrección OCR al NCF ────────────────────\ninvoiceData.ncf = corregirNCF(invoiceData.ncf);\n\nconst subtotal = toFloat(invoiceData.subtotal);\nconst itbis    = toFloat(invoiceData.impuestos);\nconst total    = toFloat(invoiceData.total);\n\n// ── Parsear fechas a formato Airtable (YYYY-MM-DD) ────────\nconst fechaEmision     = parseFecha(invoiceData.fecha_emision);\nconst fechaVencimiento = parseFecha(invoiceData.fecha_vencimiento);\n\n// ── Validar NCF (ya corregido) ────────────────────────────\nconst ncfValidation = validarNCF(invoiceData.ncf);\n\n// ── Mensaje Telegram enriquecido ─────────────────────────\nconst estadoNCF = ncfValidation.valid\n  ? `✅ Válido — ${ncfValidation.tipo_nombre}`\n  : `❌ Inválido — ${ncfValidation.motivo}`;\n\nconst telegramMessage = [\n  `🧾 <b>Factura Procesada</b>`,\n  `<code>ID: ${requestId}</code>`,\n  ``,\n  `🏢 <b>Emisor:</b> ${invoiceData.emisor}`,\n  `🪪 <b>RNC:</b> <code>${invoiceData.id_fiscal_emisor}</code>`,\n  ``,\n  `🔢 <b>Factura #:</b> <code>${invoiceData.numero_factura}</code>`,\n  `📋 <b>NCF:</b> <code>${invoiceData.ncf}</code> — ${estadoNCF}`,\n  `📅 <b>Fecha:</b> ${invoiceData.fecha_emision}`,\n  ``,\n  `💵 Subtotal: ${fmt(subtotal)} ${invoiceData.moneda}`,\n  `💸 ITBIS: ${fmt(itbis)} ${invoiceData.moneda}`,\n  `<b>✅ Total: ${fmt(total)} ${invoiceData.moneda}</b>`,\n  ``,\n  `📝 ${invoiceData.concepto}`\n].join('\\n');\n\nreturn [{\n  json: {\n    status: 'ok',\n    user_id: userId,\n    request_id: requestId,\n    folder_drive_id:   config?.folder_drive_id   ?? null,\n    airtable_base_id:  config?.airtable_base_id  ?? 'appPfkS3Gi2CJEDuG',\n    airtable_table_id: config?.airtable_table_id ?? 'tbl7XkZpew0ZU64rG',\n    telegram_chat_id:  config?.telegram_chat_id  ?? null,\n    invoice: {\n      emisor:             invoiceData.emisor,\n      cliente:            invoiceData.cliente,\n      id_fiscal_emisor:   invoiceData.id_fiscal_emisor,\n      id_fiscal_cliente:  invoiceData.id_fiscal_cliente,\n      numero_factura:     invoiceData.numero_factura,\n      ncf:                invoiceData.ncf,\n      ncf_validacion:     ncfValidation,\n      fecha_emision:      fechaEmision,\n      fecha_vencimiento:  fechaVencimiento,\n      subtotal,\n      itbis,\n      total,\n      moneda:             invoiceData.moneda,\n      concepto:           invoiceData.concepto,\n      detalle_articulos:  Array.isArray(invoiceData.detalle_articulos) ? invoiceData.detalle_articulos : [],\n      ocr_raw:            rawContent\n    },\n    telegramMessage\n  }\n}];"
+      },
+      "id": "87078c3a-f50a-4f11-a4a7-439649a8c2f0",
+      "name": "⚙️ Normalizar + Validar NCF (DGII)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -2304
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $('🗄️ Obtener Config del Usuario (Supabase)').first().json.plan }}",
+                    "rightValue": "premium",
+                    "id": "d290a33f-e6f8-4d66-b8b4-74ff2e7f1bc1"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "premium"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $('🗄️ Obtener Config del Usuario (Supabase)').first().json.plan }}",
+                    "rightValue": "pro",
+                    "id": "b7f8f9ed-6726-4aef-98bc-d2cb78e745f9"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pro"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    },
+                    "leftValue": "={{ $('🗄️ Obtener Config del Usuario (Supabase)').first().json.plan }}",
+                    "id": "89b9aa37-ced4-4abe-9bc3-6f889bdffcff"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "basic"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "basic"
+        }
+      },
+      "id": "f8ea64ba-4e44-40e0-abcd-509efc91a140",
+      "name": "🔀 Switch — Enrutar por Plan",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -1824,
+        -1744
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Verificar que el usuario existe y tiene créditos ─────\nconst prevData    = $('✅ Validar Payload Entrante').first().json;\nconst configArray = $input.all();\n\nif (!configArray || configArray.length === 0 || !configArray[0].json.user_id) {\n  throw new Error(`USER_NOT_FOUND: No se encontró configuración para user_id='${prevData.user_id}'`);\n}\n\nconst config = configArray[0].json;\n\n// Verificar créditos\nconst usados = config.creditos_usados ?? 0;\nconst limite = config.creditos_limite ?? 100;\n\nif (usados >= limite) {\n  throw new Error(`CREDITS_EXHAUSTED: El usuario '${config.user_id}' ha alcanzado su límite de ${limite} créditos. Usados: ${usados}.`);\n}\n\n// Pasar todo el contexto enriquecido al siguiente nodo\nreturn [{\n  json: {\n    ...prevData,\n    config: {\n      user_id:           config.user_id,\n      plan:              config.plan,\n      creditos_usados:   usados,\n      creditos_limite:   limite,\n      folder_drive_id:   config.folder_drive_id,\n      spreadsheet_id:    config.spreadsheet_id,\n      airtable_base_id:  config.airtable_base_id,\n      airtable_table_id: config.airtable_table_id,\n      telegram_chat_id:  config.telegram_chat_id,\n      whatsapp_number:   config.whatsapp_number,\n      notif_canal:       config.notif_canal ?? 'telegram',\n      prompt:            config.prompt_personalizado ?? null\n    }\n  }\n}];"
+      },
+      "id": "de16db9f-2d69-4f90-bf08-bfe27e3b589f",
+      "name": "🔍 ¿Usuario existe y tiene créditos?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2064,
+        -1712
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "=eq.{{ $json.user_id }}"
+            },
+            {
+              "name": "select",
+              "value": "user_id,plan,creditos_usados,creditos_limite,folder_drive_id,spreadsheet_id,airtable_base_id,airtable_table_id,telegram_chat_id,whatsapp_number,prompt_personalizado,notif_canal"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "7a9f82d8-e97a-4da4-a29d-b4854a75ab01",
+      "name": "🗄️ Obtener Config del Usuario (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2304,
+        -1712
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Validación de entrada Multi-Tenant & Multi-Acción ──────────────────\nconst body = $input.first().json.body ?? $input.first().json;\n\n// Detectamos la acción (si no viene, asumimos que es procesar factura)\nconst action   = body.action    ?? 'process_invoice'; \nconst userId   = body.user_id   ?? body.userId   ?? null;\n\nif (!userId) throw new Error('MISSING_USER_ID: El campo user_id es obligatorio.');\n\n// --- CASO 1: CREACIÓN DE CARPETA DE CLIENTE ---\nif (action === 'create_client_folder') {\n  return [{\n    json: {\n      action,\n      user_id: userId,\n      client_name: body.client_name ?? 'Sin Nombre',\n      root_folder_id: body.root_folder_id ?? null,\n      request_id: `REQ-FOLDER-${Date.now()}`\n    }\n  }];\n}\n\n// --- CASO 2: PROCESAMIENTO ESTÁNDAR DE FACTURA ---\nconst fileB64  = body.file_base64 ?? body.fileBase64 ?? null;\nconst fileName = body.file_name   ?? body.fileName ?? 'factura.jpg';\nconst auditMode = body.audit_mode ?? false;\nconst rncEmpresa = body.rnc_empresa ?? '';\nconst targetFolder = body.drive_folder_id ?? ''; \n\nif (!fileB64) throw new Error('MISSING_FILE: No se recibió ningún archivo (file_base64).');\n\nconst ext = fileName.split('.').pop().toLowerCase();\nconst allowedTypes = ['jpg', 'jpeg', 'png', 'pdf', 'webp'];\nif (!allowedTypes.includes(ext)) {\n  throw new Error(`INVALID_TYPE: Tipo '${ext}' no soportado.`);\n}\n\nconst cleanBase64 = fileB64.replace(/^data:[^;]+;base64,/, '');\n\nreturn [{\n  json: {\n    action,\n    user_id: userId,\n    file_base64: cleanBase64,\n    file_name: fileName,\n    file_type: ext,\n    audit_mode: auditMode,\n    rnc_empresa: rncEmpresa,\n    tipo_fiscal: body.tipo_fiscal ?? '606', // <--- CAPTURA EL TIPO 606/607\n    drive_folder_id: targetFolder, \n    received_at: new Date().toISOString(),\n    request_id: `REQ-${Date.now()}-${userId.substring(0,8)}`\n  }\n}];\n"
+      },
+      "id": "ad9811e9-0f96-4037-a39d-ff43621e47e4",
+      "name": "✅ Validar Payload Entrante",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2752,
+        -1712
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluxia/procesar-factura",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "9aa977ad-9772-4cf0-a4dc-75ab10c31bd3",
+      "name": "🌐 Webhook — Recibir desde Fluxia",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2992,
+        -1712
+      ],
+      "webhookId": "a6e53cf3-0ee6-4bd5-98ac-a71c7f5317fc"
+    },
+    {
+      "parameters": {
+        "content": "Facturas Multi-Tenant"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3328,
+        -1760
+      ],
+      "id": "6ced4da8-cd03-4a82-aa99-be739adc9c90",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Generador 606 DGII"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3376,
+        -1216
+      ],
+      "id": "ac8d2be2-8717-4c53-ad74-c8224381d1c7",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Acceso a datos\nconst data = $input.first()?.json || {};\nconst invoices = data.invoices || [];\nconst rnc = data.rncEmpresa || \"101863567\";\nconst period = data.periodo || \"202603\";\n\nconst headers = [\"RNC o Cédula\", \"Tipo Id\", \"Bienes/Servicios\", \"NCF\", \"NCF Modificado\", \"Fecha Comp.\", \"Fecha Pago\", \"M. Serv\", \"M. Bien\", \"Total\", \"ITBIS\", \"Ret.\", \"Prop. Itbis\", \"Costo\", \"Adelanto\", \"Perc compras\", \"T. Ret ISR\", \"Ret Renta\", \"Perc ISR\", \"ISC\", \"Otros\", \"Propina\", \"Pago\"];\n\n// 2. Generar Filas (con &nbsp; para evitar error de números científicos)\nconst rows = invoices.map(inv => {\n  const rncC = String(inv.rnc || \"\").replace(/\\D/g, \"\");\n  const ncfC = String(inv.ncf || \"\").replace(/\\s/g, \"\");\n  const m = parseFloat(String(inv.monto || \"0\").replace(/[^0-9.]/g, \"\")) || 0;\n  const i = parseFloat(String(inv.itbis || \"0\").replace(/[^0-9.]/g, \"\")) || 0;\n  let f = String(inv.fecha || \"\").replace(/\\D/g, \"\").substring(0,8) || period + \"01\";\n\n  return `<tr>\n    <td>&nbsp;${rncC}</td>\n    <td style='text-align:center'>${rncC.length===11?2:1}</td>\n    <td style='text-align:center'>02</td>\n    <td>${ncfC}</td>\n    <td></td>\n    <td style='text-align:center'>&nbsp;${f}</td>\n    <td style='text-align:center'>&nbsp;${f}</td>\n    <td style='text-align:right'>${m.toFixed(2)}</td>\n    <td>0.00</td>\n    <td style='text-align:right'>${m.toFixed(2)}</td>\n    <td style='text-align:right'>${i.toFixed(2)}</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>${i.toFixed(2)}</td>\n    <td style='text-align:right'>0.00</td>\n    <td></td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:right'>0.00</td>\n    <td style='text-align:center'>02</td>\n  </tr>`;\n}).join('');\n\nconst html = `\n<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\">\n<head><meta charset=\"UTF-8\"><style>table{border-collapse:collapse;font-family:Arial,sans-serif;font-size:8pt;}td{border:0.5pt solid #94a3b8;padding:4px;}.h{background:#1e3a8a;color:white;text-align:center;font-weight:bold;}.g{background:#f1f5f9;font-weight:bold;}.b{background:#e2e8f0;border:1pt solid #94a3b8;text-align:center;font-size:7pt;}</style></head>\n<body><table>\n  <tr><td colspan=\"23\" style=\"font-size:14pt;font-weight:bold;text-align:center;border:none;\">Formato de Envío de Compras de Bienes y Servicios</td></tr>\n  <tr><td colspan=\"23\" style=\"text-align: center; border: none;\">Herramienta de Distribución Gratuita</td></tr>\n  <tr><td colspan=\"23\" style=\"height:15px; border:none;\"></td></tr>\n  <tr><td colspan=\"23\" style=\"height:15px; border:none;\"></td></tr>\n  <tr><td colspan=\"23\" style=\"height:15px; border:none;\"></td></tr>\n  <tr>\n    <td colspan=\"2\" style=\"border:none\"></td>\n    <td class='b'>Inicio</td><td class='b'>Validar</td><td class='b'>Generar</td><td class='b'>Cancelar</td><td class='b'>Ayuda</td>\n    <td colspan=\"16\" style=\"border:none\"></td>\n  </tr>\n  <tr><td colspan=\"23\" style=\"height:10px; border: none;\"></td></tr>\n  <tr>\n    <td colspan=\"3\" class='g'>RNC O CÉDULA:</td><td colspan=\"4\">&nbsp;${rnc}</td>\n    <td colspan=\"3\" class='g'>PERIODO (AAAAMM):</td><td colspan=\"4\">${period}</td>\n    <td colspan=\"3\" class='g'>REGISTROS:</td><td colspan=\"6\">${invoices.length}</td>\n  </tr>\n  <tr><td colspan=\"23\" style=\"height:10px; border: none;\"></td></tr>\n  <tr style='background:#1e3a8a;color:white;height:25px;'>\n    ${headers.map((_, i) => `<td class='h'>${i+1}</td>`).join('')}\n  </tr>\n  <tr style='background:#1e3a8a;color:white;height:45px;'>\n    ${headers.map(h => `<td class='h' style='vertical-align:middle'>${h}</td>`).join('')}\n  </tr>\n  ${rows}\n</table></body></html>`;\n\nreturn [{\n  json: { filename: `606_Oficial_${period}.xls` },\n  binary: { data: await this.helpers.prepareBinaryData(Buffer.from(html), `606.xls`, 'application/vnd.ms-excel') }\n}];\n"
+      },
+      "id": "6d23fd49-ca69-40ca-9e08-889ee68349a6",
+      "name": "📊 Generar Excel Clon 606 (Mejorado)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2528,
+        -1200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "responseDataSource": "set",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/vnd.ms-excel"
+              },
+              {
+                "name": "Content-Disposition",
+                "value": "=attachment; filename={{ $json.filename }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "abf14301-62ce-402b-9f2e-e91d5eaace93",
+      "name": "✅ Descargar Excel en Fluxia",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -2288,
+        -1200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const norm = $('⚙️ Normalizar + Validar NCF (DGII)').first().json;\nconst inv = norm.invoice ?? {};\n\n// Excluir ocr_raw porque contiene caracteres que rompen el JSON del Respond\nconst { ocr_raw, ...invoiceLimpio } = inv;\n\nreturn [{\n  json: {\n    status: \"success\",\n    request_id: norm.request_id ?? null,\n    invoice: invoiceLimpio\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        -2048
+      ],
+      "id": "5814f58b-d094-4c7e-b620-77e541115513",
+      "name": "📤 Preparar Respuesta Éxito"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_client_folder",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "ad63bf7c-de85-4450-a337-568ba0db7cd6"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f311aeb9-53ca-483c-a18d-b114cc732c26",
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "process_invoice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2544,
+        -1712
+      ],
+      "id": "9d6eaa77-857e-4fda-a857-2c9046b27b9b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $json.client_name }}",
+        "driveId": {
+          "__rl": true,
+          "value": "={{ $json.root_folder_id }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -2288,
+        -1872
+      ],
+      "id": "b0f1618e-9c9b-4507-a69c-85aba73e9946",
+      "name": "Create folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "NUTAax6WWSObJRSo",
+          "name": "Google Drive JL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"folder_id\": \"{{ $json.id }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2080,
+        -1872
+      ],
+      "id": "ad434fd4-6eac-4cda-89e4-aae4f24fcc44",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "plan-drive-check",
+              "leftValue": "={{ $('🗄️ Obtener Config del Usuario (Supabase)').first().json.plan }}",
+              "rightValue": "basic",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        -2464
+      ],
+      "id": "7bc62e45-895f-4b98-8153-7f66277b75b1",
+      "name": "🔒 ¿Plan permite Drive?"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluxia/whop/webhook",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "266c1c6e-014e-466c-af75-4d082ffcda75",
+      "name": "🌐 Webhook — Whop Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3040,
+        -592
+      ],
+      "webhookId": "whop-webhook-fluxia-001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Verificar firma Whop y extraer datos del evento ──────────────────\nconst crypto = require('crypto');\n\nconst WHOP_SECRET = 'ws_43cc50fc146f9cbb5907ca9a469107ac9d490e8fc167a08504095a2af9ad62f7';\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst headers = $input.first().json.headers ?? {};\n\n// Verificar firma HMAC-SHA256\nconst signature = headers['whop-signature'] ?? headers['x-whop-signature'] ?? null;\nconst rawBody = typeof body === 'string' ? body : JSON.stringify(body);\n\nif (signature) {\n  const expectedSig = crypto\n    .createHmac('sha256', WHOP_SECRET)\n    .update(rawBody)\n    .digest('hex');\n  \n  if (signature !== expectedSig && !signature.includes(expectedSig)) {\n    throw new Error('INVALID_WHOP_SIGNATURE: Firma del webhook no válida.');\n  }\n}\n\n// Parsear body si viene como string\nconst event = typeof body === 'string' ? JSON.parse(body) : body;\nconst eventType = event.action ?? event.type ?? null;\n\nif (!eventType) {\n  throw new Error('INVALID_WHOP_EVENT: No se encontró el tipo de evento.');\n}\n\n// Mapeo de productos Whop → Fluxia\nconst PLANES = {\n  'prod_TBwVPWE8Fa3Pa': { plan: 'basic',   creditos: 200   },\n  'prod_diB0yzJQ2xq5M': { plan: 'pro',     creditos: 500   },\n  'prod_ZEDwjwk374Dpy': { plan: 'premium', creditos: 3000 },\n};\n\nconst data         = event.data ?? {};\nconst membership   = data.membership ?? data ?? {};\nconst productId    = membership.product_id ?? membership.plan?.product_id ?? null;\nconst planInfo     = PLANES[productId] ?? null;\nconst customerEmail = membership.user?.email ?? data.user?.email ?? null;\nconst whopUserId   = membership.user?.id ?? data.user?.id ?? null;\nconst membershipId = membership.id ?? null;\nconst discordId    = membership.user?.discord?.id ?? null;\n\n// Calcular fecha de renovación (30 días desde hoy para planes mensuales)\nconst renewalDate = new Date();\nrenewalDate.setDate(renewalDate.getDate() + 30);\n\nreturn [{\n  json: {\n    event_type:      eventType,\n    whop_user_id:    whopUserId,\n    customer_email:  customerEmail,\n    product_id:      productId,\n    membership_id:   membershipId,\n    discord_id:      discordId,\n    plan_info:       planInfo,\n    renewal_date:    renewalDate.toISOString().split('T')[0],\n    amount_paid:     membership.amount_paid ?? 0,\n    currency:        membership.currency ?? 'usd',\n    status:          membership.status ?? 'active',\n    raw_event:       event\n  }\n}];"
+      },
+      "id": "bf486b48-ce47-4ca7-accd-dfeb8c0cf70a",
+      "name": "🔐 Verificar Firma Whop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2800,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "membership.went_valid",
+                    "id": "whop-event-valid"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pago_exitoso"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "membership.went_invalid",
+                    "id": "whop-event-invalid"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pago_fallido"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "membership.was_renewed",
+                    "id": "whop-event-renewed"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "renovacion"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "membership.was_deleted",
+                    "id": "whop-event-deleted"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancelacion"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "8919a035-8336-4a86-84e6-af5ddaaa5851",
+      "name": "🔀 Switch — Tipo de Evento Whop",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -2560,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/usuarios?email=eq.{{ encodeURIComponent($('🔐 Verificar Firma Whop').first().json.customer_email) }}&select=id,email,nombre",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "91ab8299-b8b8-4c5a-9771-021be33ab736",
+      "name": "🔍 Buscar Usuario por Email (Whop)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2320,
+        -704
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?user_id=eq.{{ $('🔍 Buscar Usuario por Email (Whop)').first().json[0]?.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "plan",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.plan_info?.plan }}"
+            },
+            {
+              "name": "creditos_limite",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.plan_info?.creditos }}"
+            },
+            {
+              "name": "creditos_usados",
+              "value": "=0"
+            },
+            {
+              "name": "fecha_renovacion",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.renewal_date }}"
+            },
+            {
+              "name": "stripe_customer_id",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.membership_id }}"
+            },
+            {
+              "name": "stripe_subscription_id",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.membership_id }}"
+            },
+            {
+              "name": "stripe_price_id",
+              "value": "={{ $('🔐 Verificar Firma Whop').first().json.product_id }}"
+            },
+            {
+              "name": "actualizado_en",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5c3ea4f6-7e14-4483-b6af-78a4fe2fe7ca",
+      "name": "✅ Activar / Actualizar Plan (Whop)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2080,
+        -704
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?user_id=eq.{{ $('🔍 Buscar Usuario por Email (Whop)').first().json[0]?.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "plan",
+              "value": "basic"
+            },
+            {
+              "name": "creditos_limite",
+              "value": "=100"
+            },
+            {
+              "name": "creditos_usados",
+              "value": "=0"
+            },
+            {
+              "name": "actualizado_en",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ddab1be1-e2af-4a16-9b6d-0487827fa63b",
+      "name": "⬇️ Downgrade a Plan Basic (Whop)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2080,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "7192815138",
+        "text": "=🎉 <b>Nuevo Pago — Fluxia</b>\n\n👤 Cliente: {{ $('🔍 Buscar Usuario por Email (Whop)').first().json[0]?.nombre ?? 'Nuevo usuario' }}\n📧 Email: {{ $('🔐 Verificar Firma Whop').first().json.customer_email }}\n📦 Plan: <b>{{ $('🔐 Verificar Firma Whop').first().json.plan_info?.plan?.toUpperCase() ?? 'PRO' }}</b>\n💵 Whop Membership: {{ $('🔐 Verificar Firma Whop').first().json.membership_id }}\n🕐 Fecha: {{ new Date().toLocaleString('es-DO') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "87bb9241-53e6-4b4f-83dc-4940c94d552a",
+      "name": "✅ Notificar Pago OK (Telegram)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1840,
+        -704
+      ],
+      "webhookId": "387a298f-509e-4d65-95cc-1cdb1e515f0b",
+      "credentials": {
+        "telegramApi": {
+          "id": "t1ff5bL2II5ppCd5",
+          "name": "Telegram Fluxia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "7192815138",
+        "text": "=⚠️ <b>Membresía Cancelada/Fallida — Fluxia</b>\n\n📧 Email: {{ $('🔐 Verificar Firma Whop').first().json.customer_email }}\n🔄 Evento: {{ $('🔐 Verificar Firma Whop').first().json.event_type }}\n📅 Fecha: {{ new Date().toLocaleString('es-DO') }}\n\nSe ha aplicado downgrade a Plan Basic.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "4f23b222-bf3f-49ac-9555-72aed7e9c995",
+      "name": "⚠️ Alertar Membresía Inválida (Telegram)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1840,
+        -480
+      ],
+      "webhookId": "7b38c2de-b13c-4555-b4a6-cb5de569575d",
+      "credentials": {
+        "telegramApi": {
+          "id": "t1ff5bL2II5ppCd5",
+          "name": "Telegram Fluxia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\", \"received\": true }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "5e27fb37-5a7d-4f36-8265-5c20ce19ed0e",
+      "name": "✅ Responder a Whop (200 OK)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1600,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Stripe\n\nPagos y planes"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3360,
+        -608
+      ],
+      "id": "aa536afd-d9f0-4783-94d6-d3f1b48bb576",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fluxia/stripe/webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f13999ba-6136-449a-a334-67d2977dce0d",
+      "name": "🌐 Webhook — Stripe Events1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -3088,
+        240
+      ],
+      "webhookId": "aa07532d-851b-4368-a4a4-d75043e06731",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Verificar que el evento viene genuinamente de Stripe ──\n// Webhook Secret: whsec_9B85Q982cwYgqz1g6xCnWa0JAGmHOn5Y\n// En producción: usar stripe.webhooks.constructEvent con la firma\n// Por simplicidad en n8n, verificamos el tipo de evento\n\nconst body = $input.first().json.body ?? $input.first().json;\nconst eventType = body.type ?? null;\n\nif (!eventType) {\n  throw new Error('INVALID_STRIPE_EVENT: No se encontró el tipo de evento.');\n}\n\n// Mapeo de planes Stripe → Fluxia\nconst PLANES = {\n  'price_1TB1ODIigHmAW6AD5w1mmDa3': { plan: 'basic',   creditos: 100 },\n  'price_1TB1O1IigHmAW6ADXOoLSyde': { plan: 'pro',     creditos: 500 },\n  'price_1TB1NlIigHmAW6ADt78XjeVm': { plan: 'premium', creditos: 99999 },\n};\n\nconst data       = body.data?.object ?? {};\nconst customerId = data.customer ?? data.customer_id ?? null;\nconst priceId    = data.items?.data?.[0]?.price?.id\n                ?? data.plan?.id\n                ?? data.lines?.data?.[0]?.price?.id\n                ?? null;\nconst planInfo   = PLANES[priceId] ?? null;\n\n// Email del cliente (disponible en checkout.session)\nconst customerEmail = data.customer_email\n                   ?? data.customer_details?.email\n                   ?? null;\n\n// Pro plan: 7 días de prueba gratis (configurado en Stripe Product)\nreturn [{\n  json: {\n    event_type:      eventType,\n    stripe_customer: customerId,\n    customer_email:  customerEmail,\n    price_id:        priceId,\n    plan_info:       planInfo,\n    subscription_id: data.subscription ?? data.id ?? null,\n    amount_paid:     data.amount_paid ?? data.amount_total ?? 0,\n    currency:        data.currency ?? 'usd',\n    raw_event:       body\n  }\n}];"
+      },
+      "id": "c669a4d1-9e78-44d8-a878-d9da767f2bb7",
+      "name": "🔐 Verificar Firma Stripe1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2848,
+        240
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "checkout.session.completed",
+                    "id": "c0772915-eae8-4d74-a1ca-a8ee871fed62"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "nuevo_pago"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "invoice.payment_succeeded",
+                    "id": "113053ae-9215-4411-99ae-0ba2699c806f"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "renovacion"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "customer.subscription.deleted",
+                    "id": "06841e91-af03-4012-ae9d-6fc617b6ff72"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancelacion"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "invoice.payment_failed",
+                    "id": "64ec3d04-481e-484c-a7b2-46463166c1b5"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pago_fallido"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "cc76a2e0-9d61-447b-b0e7-d6cfc8f4ca40",
+      "name": "🔀 Switch — Tipo de Evento Stripe1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -2608,
+        240
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "url": "https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/usuarios",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "=eq.{{ $json.customer_email }}"
+            },
+            {
+              "name": "select",
+              "value": "id,email,nombre"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e12f4f8a-d2f1-42f5-a7be-a1ad2d1fc1c4",
+      "name": "🔍 Buscar Usuario por Email1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2368,
+        112
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?user_id=eq.{{ $('🔍 Buscar Usuario por Email1').first().json[0]?.id ?? $('🔍 Buscar Usuario por Email1').first().json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "plan",
+              "value": "={{ $json.plan_info.plan }}"
+            },
+            {
+              "name": "creditos_limite",
+              "value": "={{ $json.plan_info.creditos }}"
+            },
+            {
+              "name": "creditos_usados",
+              "value": "=0"
+            },
+            {
+              "name": "stripe_customer_id",
+              "value": "={{ $json.stripe_customer }}"
+            },
+            {
+              "name": "stripe_subscription_id",
+              "value": "={{ $json.subscription_id }}"
+            },
+            {
+              "name": "stripe_price_id",
+              "value": "={{ $json.price_id }}"
+            },
+            {
+              "name": "fecha_renovacion",
+              "value": "={{ new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e7ffb995-f62f-428c-a12a-6536f3bc47dc",
+      "name": "✅ Activar / Actualizar Plan1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2128,
+        48
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?stripe_customer_id=eq.{{ $json.stripe_customer }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "creditos_usados",
+              "value": "=0"
+            },
+            {
+              "name": "fecha_renovacion",
+              "value": "={{ new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9aa60cb4-403c-4680-8074-1f59d635f68f",
+      "name": "🔄 Renovar Créditos (Mensual)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2128,
+        240
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://apuxpnlcycsfuhaedagk.supabase.co/rest/v1/config_clientes?stripe_customer_id=eq.{{ $('🔐 Verificar Firma Stripe1').first().json.stripe_customer }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFwdXhwbmxjeWNzZnVoYWVkYWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxOTY4NjgsImV4cCI6MjA4ODc3Mjg2OH0.6-LwyQ1bUvwbm3geDhpBJi2k6ChcgBQfktMwhYd9G7M"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "plan",
+              "value": "=basic"
+            },
+            {
+              "name": "creditos_limite",
+              "value": "=100"
+            },
+            {
+              "name": "creditos_usados",
+              "value": "=0"
+            },
+            {
+              "name": "stripe_subscription_id",
+              "value": "="
+            },
+            {
+              "name": "stripe_price_id",
+              "value": "="
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0036b120-dde4-4d41-9f98-8d9b65d8408d",
+      "name": "⬇️ Downgrade a Plan Basic1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2128,
+        400
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "chatId": "7192815138",
+        "text": "=🎉 <b>Nuevo Pago Recibido — Fluxia</b>\n\n👤 Cliente: {{ $('🔍 Buscar Usuario por Email1').first().json[0]?.nombre ?? 'Nuevo usuario' }}\n📧 Email: {{ $('🔐 Verificar Firma Stripe1').first().json.customer_email }}\n📦 Plan: <b>{{ $('🔐 Verificar Firma Stripe1').first().json.plan_info?.plan?.toUpperCase() ?? 'PRO' }}</b>\n💵 Monto: ${{ ($('🔐 Verificar Firma Stripe1').first().json.amount_paid / 100).toFixed(2) }} {{ $('🔐 Verificar Firma Stripe1').first().json.currency?.toUpperCase() }}\n🕐 Fecha: {{ new Date().toLocaleString('es-DO') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cd65b246-069a-4bd8-a17b-3d1947a933c9",
+      "name": "🎉 Notificar Activación (Telegram)1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1888,
+        48
+      ],
+      "webhookId": "26c699ff-0f69-48ef-be33-a64ef2f8b214",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "chatId": "7192815138",
+        "text": "=⚠️ <b>Pago Fallido — Fluxia</b>\n\n📧 Cliente: {{ $('🔐 Verificar Firma Stripe1').first().json.customer_email }}\n❌ Razón: Pago rechazado por Stripe\n🔄 Stripe reintentará automáticamente.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "ec9b9e16-65a4-4eb9-ab33-4f117bc416ff",
+      "name": "⚠️ Alertar Pago Fallido1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2000,
+        576
+      ],
+      "webhookId": "5a1a5b6b-2e34-4407-ac6d-5ef0c252d639",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"received\": true }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2cdbfe72-04ac-44d4-a1ef-8f02f59ccdee",
+      "name": "✅ Responder a Stripe (200 OK)1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1648,
+        240
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const tg = $('📋 Preparar Payload').isExecuted;\nconst b64Raw = tg \n  ? $('📋 Preparar Payload').first().json.file_base64\n  : $('✅ Validar Payload Entrante').first().json.file_base64;\n\nconst b64 = b64Raw.includes('base64,') \n  ? b64Raw.split('base64,').pop() \n  : b64Raw;\n\nconst plan = $('✅ Validar Payload Entrante').isExecuted\n  ? ($('✅ Validar Payload Entrante').first().json.plan ?? 'basic')\n  : $('📋 Preparar Payload').isExecuted\n    ? ($('📋 Preparar Payload').first()?.json?.plan ?? 'basic')\n    : 'basic';\n\nreturn [{ json: { _b64: b64, _plan: plan } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        -2160
+      ],
+      "id": "e4c49a99-dfd6-48bf-944a-2bca1ab42637",
+      "name": "📦 Metadatos OCR (b64 + plan)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $input.first().json._plan ?? 'basic';\n\n// Basic: simular respuesta OpenAI vacía — el Merge siempre recibe sus 2 inputs\nif (plan === 'basic') {\n  return [{\n    json: {\n      choices: [{ message: { content: '{\"detalle_articulos\":[]}' } }]\n    }\n  }];\n}\n\nconst b64 = $input.first().json._b64;\n\nconst promptDetalle = `Eres un sistema experto de OCR contable especializado en facturas dominicanas.\nExtrae ÚNICAMENTE la lista de artículos/productos/servicios de esta factura.\n\nINSTRUCCIONES:\n1. Adáptate al formato visual: tabla, ticket, recibo, formato libre\n2. Extrae CADA artículo como objeto separado — NUNCA los combines\n3. Copia el nombre EXACTAMENTE como aparece\n4. CANTIDAD — valida con aritmética: valor_neto ÷ precio_unitario = cantidad\n   Si el resultado es 2 → cantidad=2. Si es 20 → cantidad=20. NUNCA asumas 1 sin verificar\n5. ITBIS 0 = exento, ponlo como 0\n6. Solo decimales puros sin $ ni comas (ej: 1072.82)\n7. Sin tabla de artículos → un objeto con cantidad 1 y concepto general\n\nDevuelve ÚNICAMENTE este JSON sin markdown:\n{\n  \"detalle_articulos\": [\n    {\n      \"sku\": \"código si existe, sino vacío\",\n      \"descripcion\": \"nombre EXACTO del artículo\",\n      \"unidad_medida\": \"UN, CJ, CAJA, LB, etc. Si no aparece usar UN\",\n      \"cantidad\": 1,\n      \"precio_unitario\": 0.00,\n      \"valor_con_impuestos\": 0.00,\n      \"valor_neto\": 0.00,\n      \"valor_total\": 0.00\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    model: \"gpt-4o\",\n    max_tokens: 2000,\n    messages: [{\n      role: \"user\",\n      content: [\n        { type: \"image_url\", image_url: { url: `data:image/jpeg;base64,${b64}`, detail: \"high\" }},\n        { type: \"text\", text: promptDetalle }\n      ]\n    }]\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        -2160
+      ],
+      "id": "88f37d31-2954-442f-89b3-c3d7c3825439",
+      "name": "🤖 Preparar Body Detalle (GPT-4o)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -2160
+      ],
+      "id": "75d58aa7-694d-4e10-ac9f-ce7f50a71aa5",
+      "name": "🤖 Analyze Image (GPT-4o DETALLE)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseJSON = (raw) => {\n  try {\n    const match = (raw || '{}').match(/\\{[\\s\\S]*\\}/);\n    return match ? JSON.parse(match[0]) : {};\n  } catch { return {}; }\n};\n\n// El Merge nativo pasa ambos items en $input.all()\n// item[0] = respuesta de mini OCR\n// item[1] = respuesta de GPT-4o detalle\nconst items = $input.all();\nconst miniRaw = items[0]?.json?.choices?.[0]?.message?.content ?? '{}';\nconst detalleRaw = items[1]?.json?.choices?.[0]?.message?.content ?? '{\"detalle_articulos\":[]}';\n\nconst general = parseJSON(miniRaw);\nconst detalleObj = parseJSON(detalleRaw);\nconst detalle_articulos = Array.isArray(detalleObj.detalle_articulos) \n  ? detalleObj.detalle_articulos \n  : [];\n\nconst merged = { ...general, detalle_articulos };\nreturn [{ json: { choices: [{ message: { content: JSON.stringify(merged) } }] } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        -2304
+      ],
+      "id": "a5b2f1cc-64c6-41f0-b0ed-34b60625f1b9",
+      "name": "🔀 Fusionar OCR (mini + 4o)"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        496,
+        -2304
+      ],
+      "id": "5cefe715-5a65-4319-887a-7bb01376bf8e",
+      "name": "⏳ Esperar Ambas Ramas"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "🤖 Preparar Body OCR": {
+      "main": [
+        [
+          {
+            "node": "🤖 Analyze Image (GPT-4o-mini OCR)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Preparar Campos Airtable": {
+      "main": [
+        [
+          {
+            "node": "📊 Guardar en Airtable (Multi-Tenant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔢 Leer Créditos Actuales": {
+      "main": [
+        [
+          {
+            "node": "🔢 Incrementar Créditos Usados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 ¿Es Foto Válida?": {
+      "main": [
+        [
+          {
+            "node": "❌ Avisar — No es Foto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔗 Obtener URL Archivo (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Preparar Payload": {
+      "main": [
+        [
+          {
+            "node": "🔄 Convertir Base64 a Binario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Buscar Usuario por Chat ID": {
+      "main": [
+        [
+          {
+            "node": "📋 Preparar Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Convertir a Base64": {
+      "main": [
+        [
+          {
+            "node": "🔍 Buscar Usuario por Chat ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📥 Descargar Imagen": {
+      "main": [
+        [
+          {
+            "node": "🔄 Convertir a Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⬇️ Preparar Descarga": {
+      "main": [
+        [
+          {
+            "node": "📥 Descargar Imagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔗 Obtener URL Archivo (Telegram)": {
+      "main": [
+        [
+          {
+            "node": "⬇️ Preparar Descarga",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Validar Foto Telegram": {
+      "main": [
+        [
+          {
+            "node": "🔀 ¿Es Foto Válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📱 Telegram — Recibir Foto": {
+      "main": [
+        [
+          {
+            "node": "✅ Validar Foto Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📎 Preparar Binario para Drive": {
+      "main": [
+        [
+          {
+            "node": "📋 Preparar Campos Airtable",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🔒 ¿Plan permite Drive?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Analyze Image (GPT-4o-mini OCR)": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar Ambas Ramas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔓 Hacer Público (Drive)": {
+      "main": [
+        [
+          {
+            "node": "🤖 Preparar Body OCR",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "📦 Metadatos OCR (b64 + plan)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Subir Imagen Temp (Drive)": {
+      "main": [
+        [
+          {
+            "node": "🔓 Hacer Público (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Convertir Base64 a Binario": {
+      "main": [
+        [
+          {
+            "node": "📤 Subir Imagen Temp (Drive)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Validar Parámetros": {
+      "main": [
+        [
+          {
+            "node": "📊 Generar Excel Clon 606 (Mejorado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook — Exportar 606": {
+      "main": [
+        [
+          {
+            "node": "✅ Validar Parámetros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔴 Error Handler Global": {
+      "main": [
+        [
+          {
+            "node": "❌ Respond to Webhook — Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 ¿Canal Telegram?": {
+      "main": [
+        [
+          {
+            "node": "📱 Notificar Éxito (Telegram/WhatsApp)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "📤 Preparar Respuesta Éxito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔢 Incrementar Créditos Usados": {
+      "main": [
+        [
+          {
+            "node": "🔀 ¿Canal Telegram?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Guardar en Airtable (Multi-Tenant)": {
+      "main": [
+        [
+          {
+            "node": "🔢 Leer Créditos Actuales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚦 ¿Es Duplicado?": {
+      "main": [
+        [
+          {
+            "node": "📎 Preparar Binario para Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Detectar Duplicados (Airtable)": {
+      "main": [
+        [
+          {
+            "node": "🚦 ¿Es Duplicado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Normalizar + Validar NCF (DGII)": {
+      "main": [
+        [
+          {
+            "node": "🔄 Detectar Duplicados (Airtable)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Switch — Enrutar por Plan": {
+      "main": [
+        [
+          {
+            "node": "🔄 Convertir Base64 a Binario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔄 Convertir Base64 a Binario",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔄 Convertir Base64 a Binario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 ¿Usuario existe y tiene créditos?": {
+      "main": [
+        [
+          {
+            "node": "🔀 Switch — Enrutar por Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗄️ Obtener Config del Usuario (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "🔍 ¿Usuario existe y tiene créditos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Validar Payload Entrante": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook — Recibir desde Fluxia": {
+      "main": [
+        [
+          {
+            "node": "✅ Validar Payload Entrante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Generar Excel Clon 606 (Mejorado)": {
+      "main": [
+        [
+          {
+            "node": "✅ Descargar Excel en Fluxia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📤 Preparar Respuesta Éxito": {
+      "main": [
+        [
+          {
+            "node": "✅ Respond to Webhook — Éxito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🗄️ Obtener Config del Usuario (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create folder": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔒 ¿Plan permite Drive?": {
+      "main": [
+        [
+          {
+            "node": "💾 Guardar en Drive del Usuario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook — Whop Events": {
+      "main": [
+        [
+          {
+            "node": "🔐 Verificar Firma Whop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Verificar Firma Whop": {
+      "main": [
+        [
+          {
+            "node": "🔀 Switch — Tipo de Evento Whop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Switch — Tipo de Evento Whop": {
+      "main": [
+        [
+          {
+            "node": "🔍 Buscar Usuario por Email (Whop)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔍 Buscar Usuario por Email (Whop)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔍 Buscar Usuario por Email (Whop)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔍 Buscar Usuario por Email (Whop)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Buscar Usuario por Email (Whop)": {
+      "main": [
+        [
+          {
+            "node": "✅ Activar / Actualizar Plan (Whop)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Activar / Actualizar Plan (Whop)": {
+      "main": [
+        [
+          {
+            "node": "✅ Notificar Pago OK (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⬇️ Downgrade a Plan Basic (Whop)": {
+      "main": [
+        [
+          {
+            "node": "⚠️ Alertar Membresía Inválida (Telegram)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Notificar Pago OK (Telegram)": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Whop (200 OK)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚠️ Alertar Membresía Inválida (Telegram)": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Whop (200 OK)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🌐 Webhook — Stripe Events1": {
+      "main": [
+        [
+          {
+            "node": "🔐 Verificar Firma Stripe1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔐 Verificar Firma Stripe1": {
+      "main": [
+        [
+          {
+            "node": "🔀 Switch — Tipo de Evento Stripe1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Switch — Tipo de Evento Stripe1": {
+      "main": [
+        [
+          {
+            "node": "🔍 Buscar Usuario por Email1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🔄 Renovar Créditos (Mensual)1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⬇️ Downgrade a Plan Basic1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "⚠️ Alertar Pago Fallido1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 Buscar Usuario por Email1": {
+      "main": [
+        [
+          {
+            "node": "✅ Activar / Actualizar Plan1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Activar / Actualizar Plan1": {
+      "main": [
+        [
+          {
+            "node": "🎉 Notificar Activación (Telegram)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Renovar Créditos (Mensual)1": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Stripe (200 OK)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⬇️ Downgrade a Plan Basic1": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Stripe (200 OK)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎉 Notificar Activación (Telegram)1": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Stripe (200 OK)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚠️ Alertar Pago Fallido1": {
+      "main": [
+        [
+          {
+            "node": "✅ Responder a Stripe (200 OK)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Metadatos OCR (b64 + plan)": {
+      "main": [
+        [
+          {
+            "node": "🤖 Preparar Body Detalle (GPT-4o)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Preparar Body Detalle (GPT-4o)": {
+      "main": [
+        [
+          {
+            "node": "🤖 Analyze Image (GPT-4o DETALLE)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔀 Fusionar OCR (mini + 4o)": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Normalizar + Validar NCF (DGII)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🤖 Analyze Image (GPT-4o DETALLE)": {
+      "main": [
+        [
+          {
+            "node": "⏳ Esperar Ambas Ramas",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "⏳ Esperar Ambas Ramas": {
+      "main": [
+        [
+          {
+            "node": "🔀 Fusionar OCR (mini + 4o)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "05639599-cd6f-47af-8d27-72fb1cb0c51d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0e4c851d9bbeb802c00b4578130f478c46d6968cd74d97b7133e034b8902f0f8"
+  },
+  "id": "LkplbO3You8erVhY",
+  "tags": []
+}

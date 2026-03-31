@@ -7,9 +7,12 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
     const [files, setFiles] = useState([]);
     const [processing, setProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [tipoOperacion, setTipoOperacion] = useState("606");
+    const [isDragging, setIsDragging] = useState(false);
 
     const onDrop = (e) => {
         e.preventDefault();
+        setIsDragging(false);
         const droppedFiles = Array.from(e.dataTransfer.files);
         setFiles(prev => [...prev, ...droppedFiles]);
     };
@@ -25,36 +28,92 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
         input.click();
     };
 
-    const processWithN8n = async (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = async () => {
-                try {
-                    const base64 = reader.result.split(",")[1];
-                    let webhook = import.meta.env.VITE_N8N_WEBHOOK;
-                    if (!webhook.startsWith("http")) webhook = "https://" + webhook;
+    // Comprime imagen usando Canvas antes de base64 (ahorra ~80% de tokens)
+    const compressImage = (file) => {
+        return new Promise((resolve) => {
+            // Si es PDF, no hay compresión posible — devolver directo
+            if (file.type === "application/pdf") {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(",")[1]);
+                return;
+            }
 
-                    const body = {
-                        user_id: userId,
-                        file_name: file.name,
-                        file_base64: base64,
-                        audit_mode: true,
-                        rnc_empresa: selectedClient?.rnc || "",
-                        drive_folder_id: selectedClient?.drive_folder_id || credits?.folder_drive_id || ""
-                    };
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+            img.onload = () => {
+                const MAX_DIM = 1400; // px óptimo para GPT-4o detail:high
+                let { width, height } = img;
 
-                    const res = await fetch(webhook, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(body)
-                    });
+                // Escalar manteniendo aspecto si excede el límite
+                if (width > MAX_DIM || height > MAX_DIM) {
+                    if (width > height) {
+                        height = Math.round((height * MAX_DIM) / width);
+                        width = MAX_DIM;
+                    } else {
+                        width = Math.round((width * MAX_DIM) / height);
+                        height = MAX_DIM;
+                    }
+                }
 
-                    if (res.ok) resolve(await res.json());
-                    else reject(new Error("Error en n8n"));
-                } catch (e) { reject(e); }
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // JPEG al 85% — imperceptible para OCR, reduce base64 ~75%
+                const compressed = canvas.toDataURL("image/jpeg", 0.85);
+                URL.revokeObjectURL(url);
+                resolve(compressed.split(",")[1]);
             };
+            img.onerror = () => {
+                // Fallback a base64 original si falla
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result.split(",")[1]);
+            };
+            img.src = url;
         });
+    };
+
+    const processWithN8n = async (file) => {
+        // Comprimir imagen ANTES de enviar a N8N
+        const base64 = await compressImage(file);
+
+        let webhook = import.meta.env.VITE_N8N_WEBHOOK || "";
+        webhook = webhook.replace(/^(https?:\/\/)+/g, "https://").trim();
+        if (!webhook.startsWith("http")) webhook = "https://" + webhook;
+
+        const body = {
+            user_id: userId,
+            file_name: file.name,
+            file_base64: base64,
+            audit_mode: true,
+            rnc_empresa: selectedClient?.rnc || "",
+            tipo_fiscal: tipoOperacion,
+            drive_folder_id: selectedClient?.drive_folder_id || credits?.folder_drive_id || "",
+            plan: credits?.plan || "basic" // N8N usa esto para saber si activar GPT-4o
+        };
+
+        const res = await fetch(webhook, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        const text = await res.text();
+        if (!res.ok) {
+            let errMsg = "Error en n8n";
+            try { errMsg = JSON.parse(text)?.message || errMsg; } catch {}
+            throw new Error(errMsg);
+        }
+        if (!text || text.trim() === "") throw new Error("N8N devolvió respuesta vacía");
+        try {
+            return JSON.parse(text);
+        } catch (_) {
+            throw new Error("Respuesta inválida del servidor");
+        }
     };
 
     const handleStartProcessing = async () => {
@@ -74,18 +133,28 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
         setProgress(0);
 
         withGlobalLock(async () => {
+            let successCount = 0;
+            let errorCount = 0;
+
             for (let i = 0; i < files.length; i++) {
                 try {
                     await processWithN8n(files[i]);
+                    successCount++;
                     setProgress(Math.round(((i + 1) / files.length) * 100));
                 } catch (err) {
+                    errorCount++;
                     console.error("Error procesando:", files[i].name, err);
                 }
             }
             if (reloadInvoices) reloadInvoices();
             setFiles([]);
             setProcessing(false);
-            alert("✓ Procesamiento completado.");
+            
+            if (errorCount === 0) {
+                alert(`✅ ${successCount} archivos procesados correctamente.`);
+            } else {
+                alert(`⚠️ Procesamiento terminado con detalles:\n- Éxitos: ${successCount}\n- Errores: ${errorCount}\n\nRevisa la consola para más detalles.`);
+            }
         }, "Procesamiento de Archivos");
     };
 
@@ -113,26 +182,120 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                 </div>
             )}
 
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+                <div style={{ background: "var(--bg-card)", padding: 4, borderRadius: 12, border: "1px solid var(--border)", display: "flex", gap: 4 }}>
+                    <button 
+                        onClick={() => setTipoOperacion("606")}
+                        style={{ 
+                            padding: "8px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer",
+                            background: tipoOperacion === "606" ? "var(--accent)" : "transparent",
+                            color: tipoOperacion === "606" ? "white" : "var(--text-muted)",
+                            transition: "all 0.2s ease"
+                        }}
+                    >
+                        GASTOS (606)
+                    </button>
+                    <button 
+                        onClick={() => {
+                            if (credits?.plan === "basic") {
+                                alert("🔒 Esta función disponible en Plan Pro Y Premium");
+                                return;
+                            }
+                            setTipoOperacion("607");
+                        }}
+                        style={{ 
+                            padding: "8px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer",
+                            background: tipoOperacion === "607" ? "var(--success)" : "transparent",
+                            color: tipoOperacion === "607" ? "white" : "var(--text-muted)",
+                            transition: "all 0.2s ease",
+                            opacity: credits?.plan === "basic" ? 0.6 : 1
+                        }}
+                    >
+                        INGRESOS (607) {credits?.plan === "basic" && "🔒"}
+                    </button>
+                </div>
+            </div>
+
+            {tipoOperacion === "607" && credits?.plan === "basic" && (
+                <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", padding: 20, borderRadius: 16, marginBottom: 24, textAlign: "center", animation: "fade-in 0.3s ease" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>💎 Funcionalidad Premium</div>
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Esta función disponible en Plan Pro Y Premium</p>
+                    <button className="btn-primary" style={{ padding: "8px 16px", fontSize: 12 }} onClick={() => window.location.href = "/?plan=pro"}>Mejorar mi Plan</button>
+                </div>
+            )}
+
             <div
                 className={`card ${isOutOfCredits ? "disabled" : ""}`}
-                style={{ textAlign: "center", padding: 60, opacity: isOutOfCredits ? 0.6 : 1, pointerEvents: isOutOfCredits ? "none" : "auto" }}
-                onDragOver={e => e.preventDefault()}
+                style={{ 
+                    textAlign: "center", 
+                    padding: 60, 
+                    opacity: isOutOfCredits ? 0.6 : 1, 
+                    pointerEvents: isOutOfCredits ? "none" : "auto",
+                    border: isDragging ? "2px dashed var(--accent)" : "1px solid var(--border)",
+                    backgroundColor: isDragging ? "rgba(59,130,246,0.02)" : "var(--bg-card)",
+                    transition: "all 0.3s ease",
+                    transform: isDragging ? "scale(1.01)" : "scale(1)"
+                }}
+                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                onDragEnter={() => setIsDragging(true)}
+                onDragLeave={() => setIsDragging(false)}
                 onDrop={onDrop}
             >
-                <div style={{ width: 80, height: 80, background: "var(--accent-glow)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+                <div style={{ 
+                    display: "inline-block", 
+                    padding: "6px 14px", 
+                    background: "var(--bg-surface)", 
+                    border: "1px solid var(--border)", 
+                    borderRadius: 20, 
+                    marginBottom: 20,
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: 1,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase"
+                }}>
+                    Destino: <span style={{ color: "var(--accent)" }}>{selectedClient?.nombre || "(Tú) Perfil Principal"}</span>
+                </div>
+
+                <div style={{ 
+                    width: 80, height: 80, 
+                    background: isDragging ? "var(--bg-surface)" : "var(--accent-glow)", 
+                    borderRadius: "50%", 
+                    display: "flex", alignItems: "center", justifyContent: "center", 
+                    margin: "0 auto 24px",
+                    boxShadow: isDragging ? "0 0 20px var(--accent)" : "none",
+                    transition: "all 0.3s ease"
+                }}>
                     <Icon d={icons.upload} size={32} stroke="var(--accent)" />
                 </div>
-                <h2 className="font-display" style={{ fontSize: 24, marginBottom: 12 }}>Sube tus facturas</h2>
-                <p style={{ color: "var(--text-muted)", marginBottom: 32, fontSize: 14 }}>Arrastra archivos PDF o imágenes (JPG, PNG). Hasta 20 archivos por vez.</p>
+                <h2 className="font-display" style={{ fontSize: 24, marginBottom: 12 }}>
+                    {isDragging ? "Suelta tus facturas aquí" : "Sube tus facturas"}
+                </h2>
+                <p style={{ color: "var(--text-muted)", marginBottom: 32, fontSize: 14 }}>
+                    Arrastra archivos PDF o imágenes (JPG, PNG). Hasta 20 archivos por vez.
+                </p>
 
-                <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
-                    <button className="btn-primary" style={{ width: "auto" }} onClick={handleUpload} disabled={processing || isOutOfCredits}>Seleccionar archivos</button>
-                    {files.length > 0 && (
-                        <button className="btn-secondary" onClick={handleStartProcessing} disabled={processing}>
-                            {processing ? `Procesando (${progress}%)` : `Procesar ${files.length} archivos`}
-                        </button>
-                    )}
-                </div>
+                {!processing && (
+                    <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+                        <button className="btn-primary" style={{ width: "auto" }} onClick={handleUpload} disabled={isOutOfCredits}>Seleccionar archivos</button>
+                        {files.length > 0 && (
+                            <button className="btn-secondary" onClick={handleStartProcessing}>
+                                Procesar {files.length} archivos
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {processing && (
+                    <div style={{ marginTop: 20, maxWidth: 300, margin: "0 auto" }}>
+                        <div style={{ width: "100%", height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 10, overflow: "hidden" }}>
+                            <div style={{ width: `${progress}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s ease", boxShadow: "0 0 10px var(--accent)" }}></div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, marginTop: 8, letterSpacing: 1 }}>
+                            PROCESANDO XML / PDF ({progress}%)
+                        </div>
+                    </div>
+                )}
 
                 {files.length > 0 && (
                     <div style={{ marginTop: 32, textAlign: "left", maxWidth: 500, margin: "32px auto 0", background: "var(--bg-card)", padding: 20, borderRadius: 16, border: "1px solid var(--border)" }}>

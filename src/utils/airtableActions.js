@@ -83,3 +83,31 @@ export async function updateInvoiceInAirtable(recordId, updatedFields) {
         throw error;
     }
 }
+/**
+ * Creates a new invoice record in Airtable.
+ * @param {Object} fields - The fields for the new invoice.
+ */
+export async function createInvoiceInAirtable(fields) {
+    if (!AIRTABLE_TOKEN) return { success: false, message: "Faltan datos de autenticación" };
+
+    const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ fields: fields })
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error?.message || "Error al crear factura");
+        }
+        return await res.json();
+    } catch (error) {
+        console.error("Create failed:", error);
+        throw error;
+    }
+}

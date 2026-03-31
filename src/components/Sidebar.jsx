@@ -13,7 +13,9 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
     const sourceItems = [
         { id: "drive", label: "Google Drive", icon: icons.drive },
         { id: "sheets", label: "Google Sheets", icon: icons.sheet },
-        { id: "reportes", label: "Reportería", icon: icons.bell }
+        { id: "reportes", label: "Reportería", icon: icons.bell },
+        { id: "desgloses", label: "Desgloses", icon: icons.file },
+        { id: "it1", label: "Cerebro Fiscal", icon: icons.zap }
     ];
 
     const bottomItems = [

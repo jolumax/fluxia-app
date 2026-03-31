@@ -23,6 +23,8 @@ import { Configuracion } from "./components/Configuracion";
 import { Reporteria } from "./components/Reporteria";
 import { LoginScreen } from "./components/LoginScreen";
 import { Onboarding } from "./components/Onboarding";
+import { IT1View } from "./components/IT1View";
+import { DesglosesView } from "./components/DesglosesView";
 
 export default function App() {
     const session = useSession();
@@ -31,6 +33,13 @@ export default function App() {
     const [isGlobalLocked, setIsGlobalLocked] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem("fluxia-theme") || "dark");
+    const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+    const [mockInvoices, setMockInvoices] = useState([]);
+
+    const showToast = (message, type = "success") => {
+        setToast({ show: true, message, type });
+        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
+    };
     
     // Uygulama Teması Değişikliği
     useEffect(() => {
@@ -44,7 +53,7 @@ export default function App() {
     const { credits, reloadCredits } = useCredits(userId);
     const { clients, reloadClients, loading: clientsLoading } = useClients(userId);
     const [selectedClient, setSelectedClient] = useState(null);
-    const { invoices, loading: dataLoading, reloadInvoices } = useAirtableInvoices(userId, credits, selectedClient?.rnc);
+    const { invoices, setInvoices, loading: dataLoading, reloadInvoices } = useAirtableInvoices(userId, credits, selectedClient?.rnc);
 
     const withGlobalLock = useCallback(async (taskFn, taskName = "Operación") => {
         if (isGlobalLocked) {
@@ -59,10 +68,8 @@ export default function App() {
         }
     }, [isGlobalLocked]);
 
-    // Recargar Airtable automáticamente cuando cambia el cliente seleccionado
-    useEffect(() => {
-        if (reloadInvoices) reloadInvoices();
-    }, [selectedClient?.id, reloadInvoices]);
+    // useAirtableInvoices ya reacciona al cambio de selectedClient?.rnc internamente.
+    // Se elimina el reload manual redundante para evitar dobles peticiones.
 
     // Detectar retorno desde Whop después de pago/cambio de plan
     useEffect(() => {
@@ -105,38 +112,56 @@ export default function App() {
                 const token = import.meta.env.VITE_AIRTABLE_TOKEN;
                 const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
                 const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
-                await fetch(`https://api.airtable.com/v0/${baseId}/${tableId}/${airtableId}`, {
+                const res = await fetch(`https://api.airtable.com/v0/${baseId}/${tableId}/${airtableId}`, {
                     method: "DELETE",
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                reloadInvoices();
-            } catch (err) { console.error("Error deleting:", err); }
+                
+                if (res.ok) {
+                    // Actualización Optimista: Eliminar del estado local inmediatamente
+                    if (setInvoices) {
+                        setInvoices(prev => prev.filter(inv => inv.airtableId !== airtableId));
+                    }
+                    showToast("Factura eliminada correctamente", "success");
+                } else {
+                    throw new Error("No se pudo eliminar de la base de datos");
+                }
+            } catch (err) { 
+                console.error("Error deleting:", err);
+                showToast("Error al eliminar: " + err.message, "error");
+            }
         }, "Eliminar Factura");
     };
 
     const editInvoiceInAirtable = async (airtableId, updatedFields) => {
         withGlobalLock(async () => {
             try {
-                await updateInvoiceInAirtable(airtableId, updatedFields);
-                if (reloadInvoices) reloadInvoices();
+                const res = await updateInvoiceInAirtable(airtableId, updatedFields);
+                if (res) {
+                    // Actualización Optimista: Actualizar localmente si es necesario 
+                    // (aunque reloadInvoices se llama abajo, esto ayuda a la persistencia visual)
+                    if (reloadInvoices) reloadInvoices();
+                    showToast("Factura actualizada correctamente", "success");
+                }
             } catch (err) {
                 console.error("Error editando factura:", err);
-                alert("Error al editar la factura.");
+                showToast("Error al actualizar factura", "error");
             }
         }, "Editando Factura");
     };
 
     const displayInvoices = useMemo(() => {
-        if (!invoices) return [];
-        if (!searchTerm) return invoices;
+        const allInvs = [...(invoices || []), ...mockInvoices];
+        if (!searchTerm) return allInvs;
         
         const lowSearch = searchTerm.toLowerCase();
-        return invoices.filter(inv => 
-            inv.emisor.toLowerCase().includes(lowSearch) || 
-            inv.ncf.toLowerCase().includes(lowSearch) ||
-            inv.rnc.toLowerCase().includes(lowSearch)
-        );
-    }, [invoices, searchTerm]);
+        return allInvs.filter(inv => {
+            const emisor = inv?.emisor ? String(inv.emisor).toLowerCase() : "";
+            const ncf = inv?.ncf ? String(inv.ncf).toLowerCase() : "";
+            const rnc = inv?.rnc ? String(inv.rnc).toLowerCase() : "";
+            return emisor.includes(lowSearch) || ncf.includes(lowSearch) || rnc.includes(lowSearch);
+        });
+    }, [invoices, mockInvoices, searchTerm]);
 
     if (session === undefined || (session && credits === undefined)) {
         return (
@@ -151,14 +176,31 @@ export default function App() {
     }
 
     const pages = {
-        dashboard: <Dashboard setPage={setPage} invoices={displayInvoices} dataLoading={dataLoading} credits={credits} selectedClient={selectedClient} reloadInvoices={reloadInvoices} deleteInvoice={deleteInvoiceFromAirtable} editInvoice={editInvoiceInAirtable} />,
-        procesar: <ProcesarArchivos userId={userId} selectedClient={selectedClient} reloadInvoices={reloadInvoices} withGlobalLock={withGlobalLock} isGlobalLocked={isGlobalLocked} credits={credits} />,
+        dashboard: <Dashboard 
+            setPage={setPage} 
+            invoices={displayInvoices} 
+            mockInvoices={mockInvoices}
+            setMockInvoices={setMockInvoices}
+            dataLoading={dataLoading} 
+            credits={credits} 
+            selectedClient={selectedClient} 
+            reloadInvoices={reloadInvoices} 
+            deleteInvoice={deleteInvoiceFromAirtable} 
+            editInvoice={editInvoiceInAirtable} 
+        />,
+        procesar: <ProcesarArchivos setPage={setPage} userId={userId} selectedClient={selectedClient} credits={credits} reloadInvoices={reloadInvoices} withGlobalLock={withGlobalLock} isGlobalLocked={isGlobalLocked} />,
         clientes: <ClientsView userId={userId} clients={clients} reloadClients={reloadClients} setSelectedClient={setSelectedClient} setPage={setPage} selectedClient={selectedClient} clientsLoading={clientsLoading} />,
         estadisticas: <Estadisticas invoices={displayInvoices} />,
         drive: <DriveView invoices={displayInvoices} />,
         sheets: <SheetsView invoices={displayInvoices} reloadInvoices={reloadInvoices} deleteInvoice={deleteInvoiceFromAirtable} editInvoice={editInvoiceInAirtable} dataLoading={dataLoading} credits={credits} selectedClient={selectedClient} />,
         reportes: <Reporteria invoices={displayInvoices} credits={credits} selectedClient={selectedClient} />,
-        configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} reloadCredits={reloadCredits} />
+        configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} reloadCredits={reloadCredits} />,
+        it1: <IT1View 
+            invoices={displayInvoices} 
+            selectedClient={selectedClient} 
+            credits={credits} 
+        />,
+        desgloses: <DesglosesView invoices={displayInvoices} loading={dataLoading} credits={credits} />
     };
 
     return (
@@ -191,6 +233,21 @@ export default function App() {
                         <div style={{ position: "fixed", top: 20, right: 20, background: "var(--bg-card)", border: "1px solid var(--border)", padding: "10px 16px", borderRadius: 12, boxShadow: "var(--shadow-lg)", display: "flex", alignItems: "center", gap: 10, zIndex: 9999, animation: "slide-down 0.3s ease" }}>
                             <span className="animate-spin" style={{ width: 14, height: 14, border: "2px solid rgba(59,130,246,0.2)", borderTopColor: "var(--accent)", borderRadius: "50%" }} />
                             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>Procesando...</span>
+                        </div>
+                    )}
+
+                    {toast.show && (
+                        <div className={`toast-notification ${toast.type}`} style={{
+                            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+                            background: toast.type === "success" ? "var(--success)" : "var(--danger)",
+                            color: "white", padding: "12px 24px", borderRadius: 12, fontWeight: 700,
+                            boxShadow: "0 10px 25px rgba(0,0,0,0.2)", zIndex: 10000,
+                            display: "flex", alignItems: "center", gap: 10, animation: "slide-up 0.3s ease"
+                        }}>
+                            <div style={{ background: "rgba(255,255,255,0.2)", width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>
+                                {toast.type === "success" ? "✓" : "!"}
+                            </div>
+                            {toast.message}
                         </div>
                     )}
                 </div>

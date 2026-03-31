@@ -3,7 +3,7 @@ import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { StatusBadge } from "./common/StatusBadge";
 import { Skeleton } from "./common/Skeleton";
-import { export606Official } from "../utils/exportLogic";
+import { exportControlReport } from "../utils/exportLogic";
 import { InvoiceEditModal } from "./InvoiceEditModal";
 
 export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoice, dataLoading, credits, selectedClient }) {
@@ -30,7 +30,9 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
     const handleExportExcel = () => {
         const rnc = (credits?.rnc || selectedClient?.rnc || "000000000").replace(/[^0-9]/g, "");
         const periodoStr = new Date().toISOString().substring(0, 7).replace("-", "");
-        export606Official(invoices, rnc, periodoStr);
+        
+        // Usamos el reporte de control detallado (Control Facturas) solicitado por el usuario
+        exportControlReport(invoices, rnc, periodoStr, "606");
     };
     return (
         <div className="page-content fade-in">
@@ -88,6 +90,7 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
                                 <th>MONTO</th>
                                 <th>ITBIS</th>
                                 <th>ESTADO</th>
+                                {credits?.plan !== "basic" && <th>TIPO</th>}
                                 <th>ACCIONES</th>
                             </tr>
                         </thead>
@@ -102,7 +105,7 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
                                         <td><Skeleton width={80} /></td>
                                         <td><Skeleton width={60} /></td>
                                         <td><Skeleton width={90} /></td>
-                                        <td><Skeleton width={20} /></td>
+                                        {credits?.plan !== "basic" && <td><Skeleton width={20} /></td>}
                                     </tr>
                                 ))
                             ) : filteredInvoices.map((inv, i) => (
@@ -117,6 +120,17 @@ export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoic
                                     <td style={{ fontWeight: 700 }}>{inv.monto}</td>
                                     <td>{inv.itbis}</td>
                                     <td><StatusBadge status={inv.estado} /></td>
+                                    {credits?.plan !== "basic" && (
+                                        <td>
+                                            <span style={{ 
+                                                fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 6,
+                                                background: inv.tipo_fiscal === "607" ? "rgba(16,185,129,0.1)" : "rgba(59,130,246,0.1)",
+                                                color: inv.tipo_fiscal === "607" ? "var(--success)" : "var(--accent)"
+                                            }}>
+                                                {inv.tipo_fiscal}
+                                            </span>
+                                        </td>
+                                    )}
                                     <td>
                                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                                             <button className="btn-ghost" style={{ padding: 4 }} onClick={() => setEditingInvoice(inv)} title="Editar">
