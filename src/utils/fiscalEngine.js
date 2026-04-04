@@ -28,42 +28,62 @@ export const calculateIT1 = (invoices, month = null, year = null) => {
   const totalCompras = expenses.reduce((acc, curr) => acc + (curr.monto_total || 0), 0);
   const totalItbisCompras = expenses.reduce((acc, curr) => acc + (curr.itbis_total || 0), 0);
 
-  // 5. Cálculo de Liquidación
+  // 5. Cálculo de Liquidación Base
   const balance = totalItbisVentas - totalItbisCompras;
   const itbisAPagar = balance > 0 ? balance : 0;
   const saldoAFavor = balance < 0 ? Math.abs(balance) : 0;
 
-  // 6. Proyección de Flujo de Caja (Nivel+)
+  // 6. Proyección de Flujo de Caja
   const now = new Date();
   const esMesActual = parseInt(month) === (now.getMonth() + 1) && parseInt(year) === now.getFullYear();
-  
   let proyeccion = null;
   if (esMesActual) {
     const diaActual = now.getDate();
     const diasEnMes = new Date(year, month, 0).getDate();
-    const diasRestantes = diasEnMes - diaActual;
-    const diasParaEl20 = 20 + diasRestantes; // Días hasta el 20 del próximo mes
-
-    // Promedio diario de ITBIS
-    const promedioItbisVentas = totalItbisVentas / diaActual;
-    const promedioItbisCompras = totalItbisCompras / diaActual;
-    
-    // Proyectado total
-    const ventasProyectadas = promedioItbisVentas * diasEnMes;
-    const comprasProyectadas = promedioItbisCompras * diasEnMes;
-    const balanceProyectado = ventasProyectadas - comprasProyectadas;
-
+    const balanceProyectado = (totalItbisVentas / diaActual) * diasEnMes - (totalItbisCompras / diaActual) * diasEnMes;
     proyeccion = {
       isCurrentMonth: true,
-      diaActual,
-      diasEnMes,
-      diasRestantes,
-      diasParaEl20,
       itbisProyectado: balanceProyectado > 0 ? balanceProyectado : 0,
       saldoFavorProyectado: balanceProyectado < 0 ? Math.abs(balanceProyectado) : 0,
       progresoMes: (diaActual / diasEnMes) * 100
     };
   }
+
+  // 7. Mapeo Extendido de Casillas (Anexo A y IT-1)
+  const b16 = income.filter(i => (i.ncf || "").startsWith("B16") || (i.ncf || "").startsWith("E46")); // Export
+  const b00 = income.filter(i => i.monto_itbis === 0 && !((i.ncf || "").startsWith("B16"))); // Exentas
+  const b15 = income.filter(i => (i.ncf || "").startsWith("B15") || (i.ncf || "").startsWith("E45")); // Gub
+  const b14 = income.filter(i => (i.ncf || "").startsWith("B14") || (i.ncf || "").startsWith("E44")); // Reg Esp
+  const b12 = income.filter(i => (i.ncf || "").startsWith("B12") || (i.ncf || "").startsWith("E12")); // RUI
+
+  const sumMonto = (arr) => arr.reduce((acc, curr) => acc + (curr.monto_total || 0), 0);
+
+  // Estructura Anexo A
+  const anexoA = {
+    casilla1: sumMonto(b16),
+    casilla2: sumMonto(b00),
+    casilla4: income.filter(i => (i.monto_itbis || 0) > 0).reduce((acc, curr) => acc + (curr.monto_total || 0), 0), // Gravadas
+    casilla5: sumMonto(b12), // Otros ingresos / Activos
+    casilla6: sumMonto(b14), // Reg Esp
+    casilla7: sumMonto(b15), // Gub
+    casilla11: totalVentas // Total Operaciones
+  };
+
+  // Estructura IT-1
+  const it1 = {
+    casilla1: anexoA.casilla11,
+    casilla10: anexoA.casilla11,
+    casilla11: anexoA.casilla11,
+    casilla16: totalItbisVentas,
+    casilla21: totalItbisVentas,
+    casilla22: totalItbisCompras,
+    casilla23: expenses.filter(i => (i.ncf || "").startsWith("B13") || (i.ncf || "").startsWith("E43")).reduce((acc, curr) => acc + (curr.itbis_total || 0), 0), // Importaciones
+    casilla25: 0, // Pago a cuenta
+    casilla26: balance > 0 ? balance : 0,
+    casilla27: balance < 0 ? Math.abs(balance) : 0,
+    casilla28: balance > 0 ? balance : 0, // Impuesto a pagar inicial
+    casilla33: itbisAPagar
+  };
 
   return {
     periodo: { month, year },
@@ -85,14 +105,12 @@ export const calculateIT1 = (invoices, month = null, year = null) => {
       saldoAFavor
     },
     proyeccion,
-    // Casillas simuladas del IT-1 (Simplificado)
     casillas: {
-      casilla1: totalVentas, 
-      casilla10: totalItbisVentas, 
-      casilla15: totalItbisCompras, 
-      casilla22: itbisAPagar, 
-      casilla23: saldoAFavor 
-    }
+      ...anexoA,
+      ...it1
+    },
+    anexoA,
+    it1
   };
 };
 

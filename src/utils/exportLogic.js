@@ -462,6 +462,152 @@ export const export607Official = (invoices, rncEmpresa, periodo) => {
     XLSX.writeFile(wb, `607_Oficial_${periodo}_Fluxia.xlsx`, { cellStyles: true });
 };
 
+// ─── Exportar Excel Oficial DGII IT-1 ────────────────────────────────────────
+export const exportIT1Official = (baseData, derivedValues, rncEmpresa, periodo, clientName) => {
+    const wb = XLSX.utils.book_new();
+
+    // Estilos Oficiales DGII (Gris/Blanco)
+    const GRAY_HEADER = { rgb: "D9D9D9" };
+    const GRAY_LIGHT = { rgb: "F2F2F2" };
+    const BLACK = { rgb: "000000" };
+    const BORDER = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+    
+    const headerStyle = { font: { bold: true, sz: 10 }, fill: { patternType: "solid", fgColor: GRAY_HEADER }, alignment: { horizontal: "center" }, border: BORDER };
+    const sectionStyle = { font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } }, fill: { patternType: "solid", fgColor: { rgb: "7F7F7F" } }, alignment: { horizontal: "left" }, border: BORDER };
+    const labelStyle = { font: { sz: 9 }, alignment: { horizontal: "left" }, border: BORDER };
+    const amountStyle = { font: { bold: true, sz: 10 }, alignment: { horizontal: "right" }, numFmt: '"RD$" #,##0.00', border: BORDER };
+    const subtotalStyle = { font: { bold: true, sz: 10 }, fill: { patternType: "solid", fgColor: GRAY_LIGHT }, alignment: { horizontal: "right" }, numFmt: '"RD$" #,##0.00', border: BORDER };
+
+    // ─── HOJA 1: ANEXO A ─────────────────────────────────────────────────────
+    const wsA = {};
+    const setA = (r, c, v, s = {}) => { wsA[XLSX.utils.encode_cell({ r, c })] = { v, t: typeof v === "number" ? "n" : "s", s }; };
+    
+    setA(0, 0, "ANEXO A: DETALLE DE OPERACIONES (IT-1 2020)", { font: { bold: true, sz: 14 } });
+    setA(1, 0, `Contribuyente: ${clientName} | RNC: ${rncEmpresa} | Periodo: ${periodo}`);
+
+    // Seccion II: Operaciones por NCF
+    setA(3, 0, "II. OPERACIONES POR TIPO DE COMPROBANTE (NCF)", sectionStyle);
+    XLSX.utils.sheet_add_aoa(wsA, [["II. OPERACIONES POR TIPO DE COMPROBANTE (NCF)"]], { origin: "A4" }); // Actual formatting via setA later
+    
+    const rowsNCF = [
+        ["X", "Facturas de Crédito Fiscal (B01)", baseData.anexoA.casilla4 + (baseData.anexoA.casilla2 || 0)],
+        ["X", "Facturas de Consumo (B02)", 0],
+        ["X", "Notas de Débito (B03)", 0],
+        ["X", "Notas de Crédito (B04)", 0],
+        ["X", "Regímenes Especiales (B14)", baseData.anexoA.casilla6],
+        ["X", "Comprobantes Gubernamentales (B15)", 0]
+    ];
+
+    setA(4, 0, "Ref", headerStyle);
+    setA(4, 1, "Descripción", headerStyle);
+    setA(4, 2, "Monto Total (Inc. Impuesto)", headerStyle);
+
+    rowsNCF.forEach((row, i) => {
+        const r = 5 + i;
+        setA(r, 0, row[0], labelStyle);
+        setA(r, 1, row[1], labelStyle);
+        setA(r, 2, row[2], amountStyle);
+    });
+
+    // Seccion IV: Detalle de Ingresos
+    const startIV = 12;
+    setA(startIV, 0, "IV. DETALLE DE INGRESOS POR TIPO DE OPERACIÓN (BASE)", sectionStyle);
+    
+    const rowsIV = [
+        [1, "Ingresos por exportación de bienes y servicios", baseData.anexoA.casilla1],
+        [2, "Ingresos por ventas locales (Exento)", baseData.anexoA.casilla2],
+        [4, "Ingresos por servicios gravados (18%)", baseData.anexoA.casilla4],
+        [5, "Otros ingresos (No operacionales / Activos)", baseData.anexoA.casilla5],
+        [11, "TOTAL INGRESOS POR OPERACIONES", derivedValues.totalVentas, true]
+    ];
+
+    rowsIV.forEach((row, i) => {
+        const r = startIV + 1 + i;
+        setA(r, 0, row[0], labelStyle);
+        setA(r, 1, row[1], labelStyle);
+        setA(r, 2, row[2], row[3] ? subtotalStyle : amountStyle);
+    });
+
+    wsA["!cols"] = [{ wch: 8 }, { wch: 50 }, { wch: 22 }];
+    wsA["!ref"] = "A1:C20";
+    XLSX.utils.book_append_sheet(wb, wsA, "Anexo A - Espejo");
+
+    // ─── HOJA 2: FORMULARIO IT-1 ─────────────────────────────────────────────
+    const wsI = {};
+    const setI = (r, c, v, s = {}) => { wsI[XLSX.utils.encode_cell({ r, c })] = { v, t: typeof v === "number" ? "n" : "s", s }; };
+
+    setI(0, 0, "FORMULARIO IT-1: LIQUIDACIÓN DE ITBIS", { font: { bold: true, sz: 14 } });
+    setI(1, 0, `Contribuyente: ${clientName} | RNC: ${rncEmpresa} | Periodo: ${periodo}`);
+
+    setI(3, 0, "I. DETERMINACIÓN DEL IMPUESTO", sectionStyle);
+    const rowsI_1 = [
+        [1, "Total operaciones del periodo (del Anexo A)", derivedValues.totalVentas],
+        [16, "ITBIS Cobrado (Suma ITBIS Generado)", derivedValues.itbisCobrado],
+        [17, "ITBIS Pagado en Compras Locales", derivedValues.itbisCompras],
+        [18, "ITBIS Pagado en Importaciones", baseData.it1.casilla23],
+        [20, "Total Itbis Deducible (Suma 17 al 19)", (derivedValues.itbisCompras + baseData.it1.casilla23), true]
+    ];
+
+    rowsI_1.forEach((row, i) => {
+        const r = 4 + i;
+        setI(r, 0, row[0], labelStyle);
+        setI(r, 1, row[1], labelStyle);
+        setI(r, 2, row[2], row[3] ? subtotalStyle : amountStyle);
+    });
+
+    setI(10, 0, "II. LIQUIDACIÓN", sectionStyle);
+    const rowsI_2 = [
+        [21, "Impuesto a pagar (Casilla 16 - 20)", derivedValues.aPagar],
+        [24, "Saldo a favor periodo anterior", derivedValues.saldoAnterior || 0],
+        [25, "Pagos computables (Retenciones / Pago a cuenta)", baseData.it1.casilla25],
+        [33, "TOTAL A PAGAR / (NUEVO SALDO A FAVOR)", derivedValues.aPagar > 0 ? derivedValues.aPagar : -derivedValues.saldoFavor, true]
+    ];
+
+    rowsI_2.forEach((row, i) => {
+        const r = 11 + i;
+        setI(r, 0, row[0], labelStyle);
+        setI(r, 1, row[1], labelStyle);
+        setI(r, 2, row[2], row[3] ? subtotalStyle : amountStyle);
+    });
+
+    wsI["!cols"] = [{ wch: 8 }, { wch: 50 }, { wch: 22 }];
+    wsI["!ref"] = "A1:C20";
+    XLSX.utils.book_append_sheet(wb, wsI, "IT-1 - Espejo");
+
+    // ─── HOJA 3: GUÍA DE LLENADO ─────────────────────────────────────────────
+    const wsG = XLSX.utils.aoa_to_sheet([
+        ["GUÍA DE LLENADO MANUAL (OFICINA VIRTUAL DGII)"],
+        ["Siga este orden para completar su declaración en el portal oficial."],
+        [""],
+        ["UBICACIÓN", "CASILLA", "VALOR A INGRESAR"],
+        ["ANEXO A (IV)", "1", baseData.anexoA.casilla1],
+        ["ANEXO A (IV)", "2", baseData.anexoA.casilla2],
+        ["ANEXO A (IV)", "4", baseData.anexoA.casilla4],
+        ["ANEXO A (IV)", "11", derivedValues.totalVentas],
+        ["IT-1 (I)", "16", derivedValues.itbisCobrado],
+        ["IT-1 (I)", "17", derivedValues.itbisCompras],
+        ["IT-1 (I)", "18", baseData.it1.casilla23],
+        ["IT-1 (II)", "24", derivedValues.saldoAnterior || 0],
+        ["IT-1 (II)", "25", baseData.it1.casilla25],
+        ["RESULTADO", "PAGAR/FAVOR", derivedValues.aPagar > 0 ? derivedValues.aPagar : -derivedValues.saldoFavor]
+    ]);
+    
+    // Estilos para la guía
+    const rangeG = XLSX.utils.decode_range(wsG['!ref']);
+    for(let R = rangeG.s.r; R <= rangeG.e.r; ++R) {
+        for(let C = rangeG.s.c; C <= rangeG.e.c; ++C) {
+            const addr = XLSX.utils.encode_cell({r:R, c:C});
+            if(!wsG[addr]) continue;
+            wsG[addr].s = { font: { sz: 10 }, border: BORDER };
+            if(R === 3) wsG[addr].s.fill = { patternType: "solid", fgColor: GRAY_HEADER };
+        }
+    }
+    wsG['!cols'] = [{wch: 20}, {wch: 10}, {wch: 20}];
+    XLSX.utils.book_append_sheet(wb, wsG, "GUÍA DE LLENADO");
+
+    XLSX.writeFile(wb, `IT1_Espejo_Oficial_${periodo}.xlsx`, { cellStyles: true });
+};
+
 
 // ─── Exportar Reporte de Control de Facturas (Formato Amistoso) ───────────
 export const exportControlReport = (invoices, rncEmpresa, periodo, type = "606") => {
