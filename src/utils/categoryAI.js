@@ -56,7 +56,7 @@ const PATRONES = [
     { match: /claro|codetel|tricom/i, cat: "02", label: "Telecomunicaciones (Claro)", rnc: /101001576/ },
     { match: /altice/i, cat: "02", label: "Telecomunicaciones (Altice)", rnc: /101004664/ },
     { match: /viva|wind|starlink/i, cat: "02", label: "Telecomunicaciones" },
-    { match: /cecomsa|omega tech|punto mac|ism|tecnolog/i, cat: "02", label: "Equipos/Software" },
+    { match: /cecomsa|omega tech|punto mac|ism|tecnolog|tech|redes|software|sistemas|informat|soluciones/i, cat: "02", label: "Equipos/Software/IT" },
     { match: /microsoft|google|aws|amazon web|adobe|zoom|apple/i, cat: "02", label: "Suscripciones Digitales" },
 
     // ─── FINANCIERO Y BANCOS VÁLIDOS EN RD (07) ───────────────────────

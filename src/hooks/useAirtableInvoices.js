@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { suggestCategory } from "../utils/categoryAI";
 
 export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
     const [invoices, setInvoices] = useState(null);
@@ -178,7 +179,7 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                             concepto: f["Concepto"] ?? f["concepto"] ?? "—",
                             rnc_empresa: rncEmpresa,
                             tipo_fiscal: f["tipo_fiscal"] ?? "606",
-                            categoria: f["Categoria"] ?? f["categoria"] ?? null,
+                            categoria: (f["Categoria"] ?? f["categoria"] ?? "") || (suggestCategory(rawEmisorNombre, rawEmisorRnc)?.code || null),
                             detalle_articulos: parseDetalle(),
                             airtableId: r.id
                         };
