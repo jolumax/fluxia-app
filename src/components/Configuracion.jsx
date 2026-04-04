@@ -3,15 +3,13 @@ import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { PLAN_INFO, WHOP_CHECKOUTS } from "../lib/constants";
 import { supabase } from "../lib/supabase";
-import { sanitizeRNC, sanitizeDriveId, sanitizeTelegramId, sanitizeApiKey, sanitizePrompt, trim } from "../utils/sanitize";
+import { sanitizeRNC, sanitizeDriveId, sanitizeTelegramId, trim } from "../utils/sanitize";
 
 export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
     const [tab, setTab] = useState("cuenta");
     const [loading, setLoading] = useState(false);
     const [profileData, setProfileData] = useState({ rnc: credits?.rnc || "", drive_folder_id: credits?.folder_drive_id || "" });
     const [notifData, setNotifData] = useState({ telegram_chat_id: credits?.telegram_chat_id || "", notif_canal: credits?.notif_canal || "telegram" });
-    const [apiData, setApiData] = useState({ openai_key: credits?.openai_key || "", prompt: credits?.prompt_personalizado || "" });
-    const [showKey, setShowKey] = useState(false);
     const [newPassword, setNewPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
 
@@ -41,34 +39,23 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
         finally { setLoading(false); }
     };
 
-    const handleSaveApi = async () => {
-        const cleanKey = sanitizeApiKey(apiData.openai_key);
-        const cleanPrompt = sanitizePrompt(apiData.prompt);
-        setLoading(true);
-        try {
-            const { error } = await supabase.from("config_clientes").update({ openai_key: cleanKey || null, prompt_personalizado: cleanPrompt || null }).eq("user_id", userId);
-            if (error) throw error;
-            alert("✅ Configuración de IA guardada.");
-        } catch (err) { alert("❌ Error: " + err.message); }
-        finally { setLoading(false); }
-    };
 
     const handleUpdatePassword = async () => {
         const cleanPwd = trim(newPassword);
         if (!cleanPwd) return alert("⚠️ Ingresa una nueva contraseña.");
         if (cleanPwd.length < 6) return alert("⚠️ La contraseña debe tener al menos 6 caracteres.");
         if (cleanPwd.length > 72) return alert("⚠️ La contraseña no puede superar 72 caracteres.");
-        
+
         setLoading(true);
         try {
             const { error } = await supabase.auth.updateUser({ password: cleanPwd });
             if (error) throw error;
             alert("✅ Contraseña actualizada correctamente.");
             setNewPassword("");
-        } catch (err) { 
-            alert("❌ Error: " + err.message); 
-        } finally { 
-            setLoading(false); 
+        } catch (err) {
+            alert("❌ Error: " + err.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -83,7 +70,7 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
         <div className="page-content fade-in">
             <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
                 <div className="tabs">
-                    {[["cuenta", "👤 Cuenta"], ["notif", "🔔 Notificaciones"], ["api", "🔑 API & IA"]].map(([id, label]) => (
+                    {[["cuenta", "👤 Cuenta"], ["notif", "🔔 Notificaciones"]].map(([id, label]) => (
                         <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>
                     ))}
                 </div>
@@ -136,7 +123,7 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
                                         <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>{info.precio}<span style={{ fontSize: 10, fontWeight: 400, color: "var(--text-muted)" }}>/mes</span></div>
                                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{info.descripcion}</div>
                                         {!isCurrent && (
-                                            <a 
+                                            <a
                                                 href={`${WHOP_CHECKOUTS[key]}?redirect_url=${encodeURIComponent(`${window.location.origin}/?plan=${key}&id=${userId}`)}`}
                                                 target="_blank" rel="noreferrer"
                                                 style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: "var(--accent)", textDecoration: "none", border: "1px solid var(--accent)", borderRadius: 6, padding: "4px 8px", textAlign: "center" }}>
@@ -149,17 +136,17 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
                         </div>
 
                         <div className="divider" style={{ margin: '20px 0' }} />
-                        
+
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Seguridad</div>
                         <div style={{ marginBottom: 16 }}>
                             <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700 }}>NUEVA CONTRASEÑA</label>
                             <div style={{ display: "flex", gap: 6 }}>
-                                <input 
-                                    className="input-field" 
-                                    style={{ flex: 1, fontSize: 13 }} 
-                                    type={showPassword ? "text" : "password"} 
-                                    value={newPassword} 
-                                    onChange={e => setNewPassword(e.target.value)} 
+                                <input
+                                    className="input-field"
+                                    style={{ flex: 1, fontSize: 13 }}
+                                    type={showPassword ? "text" : "password"}
+                                    value={newPassword}
+                                    onChange={e => setNewPassword(e.target.value)}
                                     placeholder="••••••••"
                                 />
                                 <button className="btn-ghost" style={{ padding: "8px 10px" }} onClick={() => setShowPassword(p => !p)}>
@@ -193,29 +180,6 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
                         <div className="divider" />
                         {["Factura con error DGII", "Duplicado detectado", "Carga completada", "Créditos por agotarse"].map(a => <AlertaToggle key={a} label={a} />)}
                         <button className="btn-primary" style={{ marginTop: 14 }} onClick={handleSaveNotif} disabled={loading}>{loading ? "Guardando..." : "Guardar configuración"}</button>
-                    </div>
-                </div>
-            )}
-
-            {tab === "api" && (
-                <div style={{ maxWidth: 560 }}>
-                    <div className="card" style={{ marginBottom: 14 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                            <Icon d={icons.zap} size={16} stroke="var(--warning)" />
-                            <div style={{ fontWeight: 700, fontSize: 13 }}>OpenAI — Motor OCR</div>
-                        </div>
-                        <div style={{ marginBottom: 14 }}>
-                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700 }}>API KEY PERSONAL (opcional)</label>
-                            <div style={{ display: "flex", gap: 6 }}>
-                                <input className="input-field" style={{ flex: 1, fontSize: 12, fontFamily: "monospace" }} type={showKey ? "text" : "password"} value={apiData.openai_key} onChange={e => setApiData({ ...apiData, openai_key: e.target.value })} />
-                                <button className="btn-ghost" style={{ padding: "8px 10px" }} onClick={() => setShowKey(p => !p)}><Icon d={icons.eye} size={14} /></button>
-                            </div>
-                        </div>
-                        <div style={{ marginBottom: 16 }}>
-                            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 5, fontWeight: 700 }}>PROMPT PERSONALIZADO</label>
-                            <textarea className="input-field" style={{ fontSize: 12, minHeight: 100, fontFamily: "monospace" }} value={apiData.prompt} onChange={e => setApiData({ ...apiData, prompt: e.target.value })} />
-                        </div>
-                        <button className="btn-primary" onClick={handleSaveApi} disabled={loading}>{loading ? "Guardando..." : "Guardar configuración"}</button>
                     </div>
                 </div>
             )}

@@ -77,7 +77,7 @@ export default function App() {
         setConfirmConfig({ show: true, title, message, onConfirm });
     }, []);
     
-    // Uygulama Teması Değişikliği
+    // Cambio de Tema de la Aplicación
     useEffect(() => {
         document.documentElement.setAttribute("data-theme", theme);
         localStorage.setItem("fluxia-theme", theme);
@@ -373,7 +373,9 @@ export default function App() {
                             theme={theme}
                             toggleTheme={toggleTheme}
                         />
-                        {pages[page]}
+                        <div key={page} className="fade-in">
+                            {pages[page]}
+                        </div>
                     </div>
                     {isGlobalLocked && (
                         <div style={{ position: "fixed", top: 20, right: 20, background: "var(--bg-card)", border: "1px solid var(--border)", padding: "10px 16px", borderRadius: 12, boxShadow: "var(--shadow-lg)", display: "flex", alignItems: "center", gap: 10, zIndex: 9999, animation: "slide-down 0.3s ease" }}>

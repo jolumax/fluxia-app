@@ -27,13 +27,61 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
             {/* Mobile Overlay */}
             {isOpen && <div className="modal-overlay" style={{ zIndex: 1500 }} onClick={onClose} />}
             
-            <nav className={`sidebar ${isOpen ? "mobile-open" : ""}`}>
-                <div className="sidebar-logo" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 34, height: 34, background: "var(--gradient)", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <Icon d={icons.layers} size={17} stroke="white" />
+            <nav className={`sidebar slide-in ${isOpen ? "mobile-open" : ""}`}>
+                <div className="sidebar-logo" style={{ 
+                    padding: "24px 20px", 
+                    marginBottom: 10,
+                    display: "flex", 
+                    justifyContent: "space-between", 
+                    alignItems: "center",
+                    borderBottom: "1px solid var(--border-light)"
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        {/* Premium Icon Container with Zap-style Effect */}
+                        <div className="brain-pulse" style={{ 
+                            width: 38, 
+                            height: 38, 
+                            background: "linear-gradient(135deg, #3b82f6, #6366f1)", 
+                            borderRadius: 12, 
+                            display: "flex", 
+                            alignItems: "center", 
+                            justifyContent: "center",
+                            boxShadow: "0 8px 20px rgba(59,130,246,0.25)",
+                            overflow: "hidden",
+                            position: "relative",
+                            border: "1px solid rgba(255,255,255,0.1)"
+                        }}>
+                             <img src="/icon-512.png" alt="Fluxia" style={{ 
+                                width: "100%", 
+                                height: "100%", 
+                                objectFit: "contain",
+                                padding: 2,
+                                filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.2))"
+                            }} />
                         </div>
-                        <span className="font-display gradient-text" style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>Fluxia</span>
+                        
+                        {/* Premium Brand Text */}
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span className="font-display" style={{ 
+                                    fontSize: 19, 
+                                    fontWeight: 900, 
+                                    letterSpacing: "-0.03em",
+                                    color: "var(--text-primary)",
+                                    lineHeight: 1
+                                }}>FLUXIA</span>
+                                <div style={{ 
+                                    fontSize: 8, 
+                                    background: "var(--gradient)", 
+                                    color: "white", 
+                                    padding: "2px 5px", 
+                                    borderRadius: 4, 
+                                    fontWeight: 900,
+                                    letterSpacing: "0.05em"
+                                }}>PRO</div>
+                            </div>
+                            <span style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 2 }}>Fiscal Intelligence</span>
+                        </div>
                     </div>
                     {/* Close Button Mobile */}
                     <button className="btn-ghost mobile-only" onClick={onClose} style={{ padding: 6, color: "var(--text-primary)" }}>

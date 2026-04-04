@@ -106,13 +106,13 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
         const text = await res.text();
         if (!res.ok) {
             let errMsg = "Error en n8n";
-            try { errMsg = JSON.parse(text)?.message || errMsg; } catch {}
+            try { errMsg = JSON.parse(text)?.message || errMsg; } catch (e) { console.warn("Error parseando respuesta de error:", e); }
             throw new Error(errMsg);
         }
         if (!text || text.trim() === "") throw new Error("N8N devolvió respuesta vacía");
         try {
             return JSON.parse(text);
-        } catch (_) {
+        } catch {
             throw new Error("Respuesta inválida del servidor");
         }
     };
@@ -128,22 +128,37 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
         }
         if (isGlobalLocked) return alert("Hay otra operación en curso. Por favor espera.");
         if (files.length === 0) return;
-        if (files.length > 20) return alert("Máximo 20 archivos por lote.");
+        if (files.length > 15) return alert("Máximo 15 archivos por lote.");
 
         setProcessing(true);
-        setProgress(0);
+        setProgress(5); // Inicia con un pequeño porcentaje para indicar actividad inmediata
 
         withGlobalLock(async () => {
             let successCount = 0;
             let errorCount = 0;
 
             for (let i = 0; i < files.length; i++) {
+                // Simulador de progreso interno para que la barra no se quede estática mientras N8N procesa inteligentemente
+                const startPercent = (i / files.length) * 100;
+                const endPercent = ((i + 1) / files.length) * 100;
+                
+                // Pequeño intervalo para "animar" el progreso de este archivo individual hasta el 90% de su tramo
+                const internalInterval = setInterval(() => {
+                    setProgress(prev => {
+                        const target = startPercent + ((endPercent - startPercent) * 0.9);
+                        if (prev < target) return prev + 1;
+                        return prev;
+                    });
+                }, 500);
+
                 try {
                     await processWithN8n(files[i]);
                     successCount++;
-                    setProgress(Math.round(((i + 1) / files.length) * 100));
+                    clearInterval(internalInterval);
+                    setProgress(Math.round(endPercent));
                 } catch (err) {
                     errorCount++;
+                    clearInterval(internalInterval);
                     console.error("Error procesando:", files[i].name, err);
                 }
             }
@@ -273,7 +288,7 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                     {isDragging ? "Suelta tus facturas aquí" : "Sube tus facturas"}
                 </h2>
                 <p style={{ color: "var(--text-muted)", marginBottom: 32, fontSize: 14 }}>
-                    Arrastra archivos PDF o imágenes (JPG, PNG). Hasta 20 archivos por vez.
+                    Arrastra archivos PDF o imágenes (JPG, PNG). Hasta 15 archivos por vez.
                 </p>
 
                 {!processing && (
@@ -293,7 +308,7 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                             <div style={{ width: `${progress}%`, height: "100%", background: "var(--accent)", transition: "width 0.3s ease", boxShadow: "0 0 10px var(--accent)" }}></div>
                         </div>
                         <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, marginTop: 8, letterSpacing: 1 }}>
-                            PROCESANDO XML / PDF ({progress}%)
+                            PROCESANDO FACTURAS / PDF ({progress}%)
                         </div>
                     </div>
                 )}

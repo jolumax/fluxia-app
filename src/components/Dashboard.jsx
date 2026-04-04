@@ -589,8 +589,10 @@ export function Dashboard({ setPage, invoices, rawInvoices, mockInvoices, setMoc
 
             <div className="charts-grid fade-in" ref={chartsRef}>
                 <div className="card chart-card">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                        <Icon d={icons.pie} size={16} stroke="var(--accent)" />
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                        <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "var(--text-primary)" }}>
+                            Distribución de Gastos (Top 5)
+                        </h3>
                     </div>
                     <div style={{ height: 280, width: '100%' }}>
                         <ResponsiveContainer>
