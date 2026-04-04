@@ -5,7 +5,7 @@ import { icons } from "../lib/icons";
 import { StatusBadge } from "./common/StatusBadge";
 import { checkNCFAlerts, validateNCF } from "../utils/helpers";
 import { export606Official } from "../utils/exportLogic";
-import { generateMasterPDF } from "../utils/pdfExport";
+import { generateMasterPDF, generatePreventiveAuditPDF } from "../utils/pdfExport";
 import { bulkUpdateInvoiceStatus } from "../utils/airtableActions";
 import { InvoiceEditModal } from "./InvoiceEditModal";
 import { DashboardSkeleton } from "./SkeletonUI";
@@ -13,9 +13,34 @@ import { suggestCategory, learnCategory, getConfidenceColor, CATEGORIAS_606 } fr
 import { useState, useMemo, useRef, useEffect } from 'react';
 
 // Panel de Inteligencia Fiscal (Cerebro IA)
-function FiscalIntelligenceInsights({ insights, plan, setPage }) {
+function FiscalIntelligenceInsights({ insights, plan, setPage, invoices, client }) {
+    const [isExportingAudit, setIsExportingAudit] = useState(false);
     if (!insights || insights.length === 0) return null;
     const isLocked = plan === "basic";
+
+    const handleAuditExport = async (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (isLocked || isExportingAudit) return;
+        
+        console.log("Iniciando auditoría IA...");
+        setIsExportingAudit(true);
+        try {
+            // Aseguramos que los datos sean válidos antes de enviar
+            const safeClient = client || { nombre: "Empresa", rnc: "N/A" };
+            const safeInsights = Array.isArray(insights) ? insights : [];
+            const safeInvoices = Array.isArray(invoices) ? invoices : [];
+            
+            await generatePreventiveAuditPDF(safeClient, safeInsights, safeInvoices);
+        } catch (err) {
+            console.error("Audit export error:", err);
+            alert("Error al generar auditoría: " + err.message);
+        } finally {
+            setIsExportingAudit(false);
+        }
+    };
 
     return (
         <div className={`card fade-in ${!isLocked ? 'focus-ring' : ''}`} style={{ 
@@ -46,7 +71,7 @@ function FiscalIntelligenceInsights({ insights, plan, setPage }) {
                         <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>Análisis proactivo de riesgos y oportunidades en tiempo real.</p>
                     </div>
                 </div>
-                {isLocked && (
+                {isLocked ? (
                     <button 
                         onClick={() => setPage("onboarding")}
                         style={{ 
@@ -56,6 +81,21 @@ function FiscalIntelligenceInsights({ insights, plan, setPage }) {
                         }}
                     >
                         💎 DESBLOQUEAR PRO
+                    </button>
+                ) : (
+                    <button 
+                        onClick={handleAuditExport}
+                        disabled={isExportingAudit}
+                        style={{ 
+                            background: "rgba(59,130,246,0.1)", color: "var(--accent)", border: "1px solid var(--accent-border)", padding: "8px 16px", 
+                            borderRadius: 10, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                            display: "flex", alignItems: "center", gap: 8, transition: "all 0.2s"
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = "rgba(59,130,246,0.2)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
+                    >
+                        <Icon d={icons.zap} size={14} stroke="var(--accent)" />
+                        {isExportingAudit ? "PROCESANDO..." : "AUDITORÍA IA ✨"}
                     </button>
                 )}
             </div>
@@ -497,7 +537,13 @@ export function Dashboard({ setPage, invoices, rawInvoices, mockInvoices, setMoc
                 </div>
             )}
 
-            <FiscalIntelligenceInsights insights={insights} plan={credits?.plan} setPage={setPage} />
+            <FiscalIntelligenceInsights 
+                insights={insights} 
+                plan={credits?.plan} 
+                setPage={setPage} 
+                invoices={allInvoices} 
+                client={selectedClient || credits} 
+            />
 
             <FacturasAVencer invoices={invoices} />
 

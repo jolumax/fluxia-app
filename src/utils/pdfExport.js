@@ -255,3 +255,139 @@ export async function generateMasterPDF(client, stats, chartsNode) {
     const filename = `Reporte_Fluxia_${(client?.rnc || "Nuevo").replace(/[^0-9a-zA-Z]/g, "")}_${new Date().toISOString().slice(0, 10)}.pdf`;
     doc.save(filename);
 }
+
+/**
+ * Reporte de Auditoría Preventiva (Cerebro IA)
+ * Genera un PDF técnico enfocado en riesgos antes del reporte DGII
+ */
+export async function generatePreventiveAuditPDF(client, insights, invoices) {
+    const doc = new jsPDF("p", "pt", "letter");
+    const margin = 36;
+    const pageW = doc.internal.pageSize.getWidth();
+    const logoBase64 = await loadLogoBase64("/icon-512.png");
+
+    // Cabecera Premium
+    doc.setFillColor(15, 23, 42); 
+    doc.rect(0, 0, pageW, 100, "F");
+
+    if (logoBase64) doc.addImage(logoBase64, "PNG", margin, 20, 52, 52);
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(255, 255, 255);
+    doc.text("FLUXIA", margin + 60, 50);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(148, 163, 184);
+    doc.text("Asistente de Auditoría Preventiva (IA)", margin + 60, 68);
+
+    const dateStr = new Date().toLocaleDateString("es-DO", { year: "numeric", month: "long", day: "numeric" });
+    doc.text(dateStr, pageW - margin, 50, { align: "right" });
+
+    let y = 130;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.text("DIAGNÓSTICO DE RIESGOS FISCALES", margin, y);
+
+    y += 24;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Cliente: ${client?.nombre || "N/A"} | RNC: ${client?.rnc || "N/A"}`, margin, y);
+
+    y += 30;
+
+    // 1. Sección de Hallazgos Críticos (Cerebro IA)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(239, 68, 68);
+    doc.text("1. HALLAZGOS DEL CEREBRO IA", margin, y);
+    y += 15;
+
+    const insightRows = (insights || []).map(ins => [ins.title, ins.description]);
+    if (insightRows.length > 0) {
+        y = drawTable(doc, {
+            startX: margin,
+            startY: y,
+            headers: ["HALLAZGO", "DESCRIPCIÓN TÉCNICA"],
+            rows: insightRows,
+            colWidths: [180, 360],
+            rowHeight: 34,
+            headerBg: [239, 68, 68]
+        });
+    } else {
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(100, 116, 139);
+        doc.text("No se detectaron riesgos críticos por la IA en este periodo.", margin + 10, y + 10);
+        y += 30;
+    }
+
+    y += 35;
+
+    // 2. Sección de Facturas con NCF de Consumo (B02) en Compras (606)
+    // Esto es un error común que genera rechazos de ITBIS
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(245, 158, 11);
+    doc.text("2. RIESGOS POR NCF CONSUMIDOR FINAL (B02) EN COMPRAS", margin, y);
+    y += 15;
+
+    const b02Risks = (invoices || []).filter(inv => inv.tipo_fiscal === "606" && inv.ncf?.startsWith("B02"));
+    if (b02Risks.length > 0) {
+        const rows = b02Risks.map(r => [r.emisor, r.rnc, r.ncf, r.monto]);
+        y = drawTable(doc, {
+            startX: margin,
+            startY: y,
+            headers: ["PROVEEDOR", "RNC", "NCF", "MONTO"],
+            rows: rows,
+            colWidths: [180, 100, 140, 120],
+            rowHeight: 28,
+            headerBg: [245, 158, 11]
+        });
+        
+        y += 20;
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text("* Advertencia: Las facturas B02 no permiten deducir ITBIS ni gasto para fines de ISR en el 606.", margin, y);
+        y += 15;
+    } else {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(16, 185, 129);
+        doc.text("No se encontraron facturas B02 en el reporte de compras. ✅", margin + 10, y + 10);
+        y += 30;
+    }
+
+    y += 40;
+
+    // Conclusión IA
+    if (y > 600) { doc.addPage(); y = margin; }
+    doc.setFillColor(248, 250, 252);
+    doc.rect(margin, y, pageW - margin * 2, 60, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(30, 41, 59);
+    doc.text("VEREDICTO FINAL IA:", margin + 15, y + 25);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    const riskLevel = (insights?.length > 4 || b02Risks.length > 2) ? "ALTO" : "BAJO";
+    doc.text(`Se recomienda revisar los hallazgos antes de proceder con el envío trimestral/mensual. Riesgo detectado: ${riskLevel}.`, margin + 15, y + 42);
+
+    // Footer
+    const total = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= total; i++) {
+        doc.setPage(i);
+        doc.setFillColor(15, 23, 42);
+        doc.rect(0, doc.internal.pageSize.getHeight() - 40, pageW, 40, "F");
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text("Fluxia Audit Assistant \u2014 Proactive Fiscal Intelligence", margin, doc.internal.pageSize.getHeight() - 14);
+        doc.text(`Página ${i} de ${total}`, pageW - margin, doc.internal.pageSize.getHeight() - 14, { align: "right" });
+    }
+
+    doc.save(`Auditoria_Preventiva_Fluxia_${client?.rnc || "Reporte"}.pdf`);
+}

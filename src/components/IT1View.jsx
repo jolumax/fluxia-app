@@ -7,12 +7,15 @@ import { jsPDF } from "jspdf";
 import { exportTo607 } from "../utils/export607";
 import { export606Txt, export607Txt } from "../utils/exportLogic";
 import { validateNCF } from "../utils/helpers";
+import { generatePreventiveAuditPDF } from "../utils/pdfExport";
+import { generateFiscalInsights } from "../utils/fiscalIntelligence";
 
 export function IT1View({ invoices, selectedClient, credits }) {
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
     const [saldoAnterior, setSaldoAnterior] = useState(0);
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportingAudit, setIsExportingAudit] = useState(false);
     const [showTxtMenu, setShowTxtMenu] = useState(false);
     const reportRef = useRef(null);
     const dropdownRef = useRef(null);
@@ -75,6 +78,30 @@ export function IT1View({ invoices, selectedClient, credits }) {
         if (!invoices) return null;
         return calculateIT1(invoices, month, year);
     }, [invoices, month, year]);
+
+    // Calcular insights para el periodo seleccionado
+    const insights = useMemo(() => {
+        if (!invoices) return [];
+        const periodInvoices = invoices.filter(inv => {
+            if (!inv.fecha || inv.fecha === "—") return false;
+            const [y, m] = inv.fecha.split("-").map(Number);
+            return y === year && m === month;
+        });
+        return generateFiscalInsights(periodInvoices);
+    }, [invoices, month, year]);
+
+    const handleAuditExport = async () => {
+        if (!hasAccess) return;
+        setIsExportingAudit(true);
+        try {
+            await generatePreventiveAuditPDF(selectedClient || credits, insights, invoices);
+        } catch (err) {
+            console.error("Audit export error:", err);
+            alert("Error al generar auditoría.");
+        } finally {
+            setIsExportingAudit(false);
+        }
+    };
 
     const handleExport606Txt = () => {
         const rnc = (selectedClient?.rnc || credits?.rnc || "000000000").replace(/[^0-9]/g, "");
@@ -422,6 +449,25 @@ export function IT1View({ invoices, selectedClient, credits }) {
                             <Icon d={icons.table} size={18} /> Oficial 607 (Excel)
                         </button>
                         
+                        <button 
+                            className="btn-primary" 
+                            style={{ 
+                                height: 46, padding: "0 28px", display: "flex", alignItems: "center", gap: 12, 
+                                justifyContent: "center", fontSize: 14, fontWeight: 900, whiteSpace: "nowrap", 
+                                boxShadow: "0 8px 20px rgba(59,130,246,0.3)",
+                                background: "rgba(59,130,246,0.1)",
+                                color: "var(--accent)",
+                                border: "1px solid var(--accent-border)"
+                            }} 
+                            onClick={handleAuditExport}
+                            disabled={isExportingAudit}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(59,130,246,0.2)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(59,130,246,0.1)"}
+                        >
+                            <Icon d={icons.zap} size={18} stroke="var(--accent)" />
+                            {isExportingAudit ? "PROCESANDO..." : "AUDITORÍA IA"}
+                        </button>
+
                         <button 
                             className="btn-primary" 
                             style={{ height: 46, padding: "0 28px", display: "flex", alignItems: "center", gap: 12, justifyContent: "center", fontSize: 14, fontWeight: 900, whiteSpace: "nowrap", boxShadow: "0 8px 20px rgba(59,130,246,0.3)" }} 
