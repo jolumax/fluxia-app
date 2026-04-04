@@ -122,8 +122,8 @@ export function LoginScreen({ isResetting, onResetDone }) {
                         display: "flex", 
                         alignItems: "center", 
                         justifyContent: "center",
-                        boxShadow: "0 10px 25px rgba(59,130,246,0.3)",
-                        overflow: "hidden",
+                        boxShadow: "0 10px 30px rgba(59,130,246,0.3)",
+                        overflow: "visible",
                         position: "relative",
                         border: "1px solid rgba(255,255,255,0.1)"
                     }}>

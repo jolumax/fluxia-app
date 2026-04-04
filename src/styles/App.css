@@ -44,6 +44,13 @@ body {
   color: var(--text-primary); 
   scroll-behavior: smooth;
   transition: background-color 0.3s ease;
+  min-height: -webkit-fill-available;
+  min-height: 100vh;
+}
+
+html, #root {
+  height: 100%;
+  background: var(--bg-base);
 }
 
 .font-display { font-family: 'Syne', sans-serif; }
@@ -846,7 +853,8 @@ option { background: var(--bg-card); }
   .topbar { padding: 0 20px; }
 }
 
-.mobile-only-flex, .toast-notification.native {
+/* Renamed Toast-specific styles to avoid conflicts with utility classes */
+.toast-notification.floating-mobile {
   bottom: 40px;
   border: 1px solid rgba(255,255,255,0.1);
   box-shadow: 0 20px 40px rgba(0,0,0,0.4);
@@ -882,6 +890,17 @@ option { background: var(--bg-card); }
   .mobile-only {
     display: block !important;
   }
+  
+  .sidebar-logo {
+     padding: 16px !important;
+  }
+  
+  /* Prevent white gaps at the bottom of mobile viewports */
+  .app-layout {
+    min-height: -webkit-fill-available;
+    min-height: 100vh;
+    background: var(--bg-base);
+  }
 }
 
 @media (max-width: 480px) {
@@ -910,12 +929,12 @@ option { background: var(--bg-card); }
 
 /* Glassmorphism for Sidebar & Topbar */
 .sidebar, .topbar {
-  background: color-mix(in srgb, var(--bg-surface) 75%, transparent) !important;
+  background: color-mix(in srgb, var(--bg-surface) 90%, transparent) !important;
   -webkit-backdrop-filter: blur(20px) saturate(140%);
   backdrop-filter: blur(20px) saturate(140%);
   border-right-color: var(--border) !important;
   border-bottom-color: var(--border) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 /* Data Table Row Custom Hover Smoothness */
