@@ -349,8 +349,9 @@ export function IT1View({ invoices, selectedClient, credits }) {
         <div className="page-content fade-in">
             {/* Cabecera - Nivel 1: Título y Periodo */}
             <div className="no-print card" style={{
-                marginBottom: 24, padding: "16px 32px", display: "flex",
+                marginBottom: 24, padding: 20, display: "flex",
                 justifyContent: "space-between", alignItems: "center",
+                flexWrap: "wrap", gap: 16,
                 background: "rgba(15,23,42,0.1)", border: "1px solid var(--border)"
             }}>
                 <div>
@@ -358,7 +359,7 @@ export function IT1View({ invoices, selectedClient, credits }) {
                     <p style={{ color: "var(--text-muted)", fontSize: 13, fontWeight: 600, margin: 0 }}>Simulación IT-1</p>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--bg-card)", padding: "8px 18px", borderRadius: 12, border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--bg-card)", padding: "8px 18px", borderRadius: 12, border: "1px solid var(--border)", flexWrap: "wrap" }}>
                     <span style={{ fontSize: 10, fontWeight: 800, color: "var(--text-muted)", letterSpacing: "0.05em" }}>FILTRAR PERIODO:</span>
                     <div style={{ display: "flex", gap: 8 }}>
                         <select className="input-field" style={{ width: 120, height: 38, fontSize: 13, fontWeight: 700 }} value={month} onChange={e => setMonth(parseInt(e.target.value))}>
@@ -373,8 +374,8 @@ export function IT1View({ invoices, selectedClient, credits }) {
 
             {/* Acciones - Nivel 2: Botones de Exportación e Inteligencia */}
             <div className="no-print" style={{ marginBottom: 40, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8 }} onClick={() => setShowTxtMenu(!showTxtMenu)} ref={dropdownRef}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: "1 1 auto" }}>
+                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "center" }} onClick={() => setShowTxtMenu(!showTxtMenu)} ref={dropdownRef}>
                         <Icon d={icons.download} size={16} /> <span style={{ fontWeight: 700 }}>Exportar TXT</span>
                         {showTxtMenu && (
                             <div className="dropdown-menu-fiscal" style={{ position: "absolute", top: "110%", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 12, padding: 8, zIndex: 100, boxShadow: "0 10px 30px rgba(0,0,0,0.3)", minWidth: 200 }}>
@@ -383,19 +384,19 @@ export function IT1View({ invoices, selectedClient, credits }) {
                             </div>
                         )}
                     </button>
-                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8 }} onClick={() => exportTo607(invoices, selectedClient, month, year)}>
+                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "center" }} onClick={() => exportTo607(invoices, selectedClient, month, year)}>
                         <Icon d={icons.table} size={16} /> <span style={{ fontWeight: 700 }}>Excel Oficial 607</span>
                     </button>
-                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8 }} onClick={handleExportIT1Excel}>
+                    <button className="btn-secondary" style={{ height: 42, padding: "0 14px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "center" }} onClick={handleExportIT1Excel}>
                         <Icon d={icons.table} size={16} /> <span style={{ fontWeight: 700 }}>IT-1 Espejo DGII</span>
                     </button>
                 </div>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button className="btn-primary" style={{ height: 42, padding: "0 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, background: "rgba(59,130,246,0.08)", color: "var(--accent)", border: "1px solid var(--accent-border)" }} onClick={handleAuditExport} disabled={isExportingAudit}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: "1 1 auto" }}>
+                    <button className="btn-primary" style={{ height: 42, padding: "0 16px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "center", background: "rgba(59,130,246,0.08)", color: "var(--accent)", border: "1px solid var(--accent-border)" }} onClick={handleAuditExport} disabled={isExportingAudit}>
                         <Icon d={icons.zap} size={16} /> <span style={{ fontWeight: 800 }}>Auditoría IA Global</span>
                     </button>
-                    <button className="btn-primary" style={{ height: 42, padding: "0 18px", fontSize: 11, display: "flex", alignItems: "center", gap: 8 }} onClick={handleExportPDF} disabled={isExporting}>
+                    <button className="btn-primary" style={{ height: 42, padding: "0 18px", fontSize: 11, display: "flex", alignItems: "center", gap: 8, flex: "1 1 auto", justifyContent: "center" }} onClick={handleExportPDF} disabled={isExporting}>
                         <Icon d={icons.download} size={16} /> <span style={{ fontWeight: 800 }}>Informe PDF Completo</span>
                     </button>
                 </div>
