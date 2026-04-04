@@ -11,9 +11,9 @@ export const WHOP_CHECKOUTS = {
 };
 
 export const PLAN_INFO = {
-    basic: { nombre: "Básico", precio: "$25.00", creditos: 200, descripcion: "200 facturas/mes" },
+    basic: { nombre: "Básico", precio: "$25.00", creditos: 150, descripcion: "150 facturas/mes" },
     pro: { nombre: "Pro", precio: "$56.00", creditos: 500, descripcion: "500 facturas/mes" },
-    premium: { nombre: "Premium", precio: "$129.99", creditos: 3000, descripcion: "3,000 facturas/mes" }
+    premium: { nombre: "Premium", precio: "$129.99", creditos: 2500, descripcion: "2,500 facturas/mes" }
 };
 
 export const DRIVE_FOLDER_ID = "1PgkAJbmqkxm8hYgWhGal_kwR-_vaFVmL";

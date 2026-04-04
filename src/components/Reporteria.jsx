@@ -2,14 +2,14 @@ import React, { useState, useMemo } from "react";
 import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { export606Txt, export606Official } from "../utils/exportLogic";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { generateMasterPDF } from "../utils/pdfExport";
 
 export function Reporteria({ invoices, credits, selectedClient }) {
     const [period, setPeriod] = useState({
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear()
     });
+    const [isExportingPDF, setIsExportingPDF] = useState(false);
 
     const filtered = useMemo(() => {
         return invoices.filter(inv => {
@@ -51,60 +51,36 @@ export function Reporteria({ invoices, credits, selectedClient }) {
         export606Official(filtered, rnc, periodoStr);
     };
 
-    const handleExportPDF = () => {
-        const doc = new jsPDF();
-        const clientName = selectedClient?.nombre || "Usuario Fluxia";
-        const clientRNC = selectedClient?.rnc || credits?.rnc || "N/A";
-        const monthName = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][period.month - 1];
+    const handleExportPDF = async () => {
+        setIsExportingPDF(true);
+        try {
+            // Construir objeto de cliente/contexto compatible con generateMasterPDF
+            const clientInfo = {
+                nombre: selectedClient?.nombre || credits?.nombre || "Empresa",
+                rnc: selectedClient?.rnc || credits?.rnc || "N/A",
+                plan: credits?.plan || "Pro"
+            };
 
-        // Header
-        doc.setFontSize(22);
-        doc.setTextColor(59, 130, 246);
-        doc.text("FLUXIA - Resumen de Facturación", 14, 22);
-        
-        doc.setFontSize(10);
-        doc.setTextColor(100);
-        doc.text(`Cliente: ${clientName}`, 14, 32);
-        doc.text(`RNC: ${clientRNC}`, 14, 37);
-        doc.text(`Periodo: ${monthName} ${period.year}`, 14, 42);
-        doc.text(`Fecha de Gen: ${new Date().toLocaleDateString()}`, 14, 47);
+            // Construir stats compatibles con generateMasterPDF
+            const pdfStats = {
+                gastos_totales: stats.total,
+                ventas_totales: 0, // Reporteria solo maneja 606 por ahora
+                itbis_a_pagar: stats.itbis,
+                validas: filtered.filter(i => i.estado === "valido").length,
+                errors: filtered.filter(i => i.estado === "error").length,
+                fiscalRisks: 0,
+                b01: filtered.filter(i => i.ncf?.startsWith("B01") || i.ncf?.startsWith("E31")).length,
+                b02: filtered.filter(i => i.ncf?.startsWith("B02") || i.ncf?.startsWith("E32")).length,
+                b04: filtered.filter(i => i.ncf?.startsWith("B04") || i.ncf?.startsWith("E34")).length,
+            };
 
-        // Stats Box
-        doc.setFillColor(248, 250, 252);
-        doc.rect(14, 55, 182, 25, "F");
-        doc.setFontSize(11);
-        doc.setTextColor(30, 41, 59);
-        doc.text("TOTAL COMPRAS", 20, 65);
-        doc.text("ITBIS ADELANTADO", 80, 65);
-        doc.text("CANT. FACTURAS", 150, 65);
-        
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text(`RD$ ${stats.total.toLocaleString()}`, 20, 74);
-        doc.text(`RD$ ${stats.itbis.toLocaleString()}`, 80, 74);
-        doc.text(`${stats.count}`, 150, 74);
-
-        // Table
-        const tableRows = filtered.map(inv => [
-            inv.fecha,
-            inv.emisor,
-            inv.rnc,
-            inv.ncf,
-            inv.monto_total?.toLocaleString(),
-            inv.itbis_total?.toLocaleString(),
-            inv.estado.toUpperCase()
-        ]);
-
-        autoTable(doc, {
-            startY: 90,
-            head: [["Fecha", "Emisor", "RNC", "NCF", "Monto", "ITBIS", "Estado"]],
-            body: tableRows,
-            theme: "striped",
-            headStyles: { fillColor: [59, 130, 246] },
-            styles: { fontSize: 8 }
-        });
-
-        doc.save(`Fluxia_Reporte_${period.month}_${period.year}.pdf`);
+            await generateMasterPDF(clientInfo, pdfStats, null);
+        } catch (err) {
+            console.error("Error generando PDF:", err);
+            alert("Hubo un error al generar el PDF.");
+        } finally {
+            setIsExportingPDF(false);
+        }
     };
 
     return (
@@ -157,8 +133,8 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                     <button className="btn-primary" onClick={handleExport606Txt} style={{ flex: 1 }}>
                         <Icon d={icons.layers} size={16} /> Exportar .TXT (606)
                     </button>
-                    <button className="btn-secondary" onClick={handleExportPDF} style={{ flex: 1, background: "#ef4444", color: "white", borderColor: "#ef4444" }}>
-                        <Icon d={icons.sheet} size={16} color="white" /> Descargar PDF
+                    <button className="btn-secondary" onClick={handleExportPDF} disabled={isExportingPDF} style={{ flex: 1, background: isExportingPDF ? "#9ca3af" : "#ef4444", color: "white", borderColor: isExportingPDF ? "#9ca3af" : "#ef4444", opacity: isExportingPDF ? 0.8 : 1 }}>
+                        <Icon d={icons.file} size={16} /> {isExportingPDF ? "Generando..." : "Descargar PDF"}
                     </button>
                     <button className="btn-secondary" onClick={handleExportOfficial} style={{ flex: 1 }}>
                         <Icon d={icons.zap} size={16} /> Exportar Excel DGII

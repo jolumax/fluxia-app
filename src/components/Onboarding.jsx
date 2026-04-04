@@ -16,7 +16,7 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
             const cleanEmpresa = sanitizeName(formData.empresa);
             if (!cleanEmpresa) { alert("⚠️ El nombre de la empresa es requerido."); setLoading(false); return; }
 
-            const limits = { basic: 200, pro: 500, premium: 3000 };
+            const limits = { basic: 150, pro: 500, premium: 2500 };
 
             await supabase.from("usuarios").upsert([{
                 id: userId,
@@ -84,9 +84,9 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
                     <div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
                             {[
-                                { id: "basic", t: "Básico", desc: "200 facturas/mes", price: "$25.00", color: "var(--text-muted)" },
+                                { id: "basic", t: "Básico", desc: "150 facturas/mes", price: "$25.00", color: "var(--text-muted)" },
                                 { id: "pro", t: "Pro", desc: "500 facturas/mes", price: "$56.00", color: "var(--accent)", popular: true },
-                                { id: "premium", t: "Premium", desc: "3000 facturas", price: "$129.99", color: "#FFD700" }
+                                { id: "premium", t: "Premium", desc: "2500 facturas", price: "$129.99", color: "#FFD700" }
                             ].map(p => (
                                 <div key={p.id} onClick={() => setFormData({ ...formData, plan: p.id })}
                                     style={{

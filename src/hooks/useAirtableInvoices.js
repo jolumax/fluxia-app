@@ -11,7 +11,7 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
         // FIX BUG 1: Guard correcto — solo bloquear si userId es null/undefined
         // credits puede ser un objeto con valores en 0, eso es válido
         if (!userId || credits === undefined || credits === null) {
-            setLoading(false);
+            setTimeout(() => setLoading(false), 0);
             return;
         }
 
@@ -178,6 +178,7 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                             concepto: f["Concepto"] ?? f["concepto"] ?? "—",
                             rnc_empresa: rncEmpresa,
                             tipo_fiscal: f["tipo_fiscal"] ?? "606",
+                            categoria: f["Categoria"] ?? f["categoria"] ?? null,
                             detalle_articulos: parseDetalle(),
                             airtableId: r.id
                         };

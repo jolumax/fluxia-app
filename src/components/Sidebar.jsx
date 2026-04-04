@@ -25,7 +25,7 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
     return (
         <>
             {/* Mobile Overlay */}
-            {isOpen && <div className="modal-overlay" style={{ zIndex: 1999 }} onClick={onClose} />}
+            {isOpen && <div className="modal-overlay" style={{ zIndex: 1500 }} onClick={onClose} />}
             
             <nav className={`sidebar ${isOpen ? "mobile-open" : ""}`}>
                 <div className="sidebar-logo" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -36,8 +36,8 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
                         <span className="font-display gradient-text" style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>Fluxia</span>
                     </div>
                     {/* Close Button Mobile */}
-                    <button className="btn-ghost mobile-only" onClick={onClose} style={{ padding: 6, display: "none" }}>
-                        <Icon d={icons.x} size={20} />
+                    <button className="btn-ghost mobile-only" onClick={onClose} style={{ padding: 6, color: "var(--text-primary)" }}>
+                        <Icon d={icons.x} size={20} stroke="var(--text-primary)" />
                     </button>
                 </div>
 

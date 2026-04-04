@@ -25,16 +25,16 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 {/* Mobile Menu Toggle */}
                 <button className="btn-ghost mobile-only-flex" onClick={onMenuClick} style={{ padding: 6, marginLeft: -6 }}>
-                    <Icon d="M3 12h18M3 6h18M3 18h18" size={20} />
+                    <Icon d="M2.25 12h19.5M2.25 6h19.5M2.25 18h19.5" size={20} />
                 </button>
                 {/* Page Title */}
                 <h1 className="font-display" style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
                     {titles[page] || "Fluxia"}
                 </h1>
                 {/* Separator */}
-                <div style={{ width: 1, height: 22, background: "var(--border)", flexShrink: 0 }} />
+                <div className="topbar-desktop-only" style={{ width: 1, height: 22, background: "var(--border)", flexShrink: 0 }} />
                 {/* Date chip */}
-                <div style={{
+                <div className="topbar-date" style={{
                     display: "flex", alignItems: "center", gap: 6,
                     background: "var(--bg-hover)",
                     border: "1px solid var(--border)",
@@ -48,12 +48,12 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
                 </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ position: "relative", minWidth: 220 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, letterSpacing: 0.5 }}>CLIENTE / EMPRESA ACTIVA</div>
+                <div className="topbar-client-selector" style={{ position: "relative", minWidth: 200 }}>
+                    <div className="topbar-client-label" style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, letterSpacing: 0.5 }}>CLIENTE ACTIVO</div>
                     <div style={{ position: "relative" }}>
                         <select
                             className="input-field"
-                            style={{ padding: "6px 34px 6px 12px", fontSize: 12, height: 36, background: "var(--bg-card)", borderColor: selectedClient ? "var(--accent)" : "var(--border)" }}
+                            style={{ padding: "6px 34px 6px 12px", fontSize: 12, height: 36, background: "var(--bg-card)", borderColor: selectedClient ? "var(--accent)" : "var(--border)", width: "100%" }}
                             value={selectedClient?.id || ""}
                             onChange={(e) => {
                                 const client = clients.find(c => c.id === e.target.value);
@@ -71,10 +71,10 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
                     </div>
                 </div>
 
-                <div style={{ width: 1, height: 30, background: "var(--border)", margin: "0 4px" }} />
+                <div className="topbar-desktop-only" style={{ width: 1, height: 30, background: "var(--border)", margin: "0 4px" }} />
 
-                <div style={{ position: "relative", display: "flex" }}>
-                    <input className="input-field" placeholder="Buscar facturas, NCF..." style={{ width: 220, padding: "8px 14px 8px 34px", fontSize: 12 }}
+                <div className="topbar-search" style={{ position: "relative", display: "flex" }}>
+                    <input className="input-field" placeholder="Buscar..." style={{ width: 180, padding: "8px 14px 8px 34px", fontSize: 12 }}
                         onChange={e => onSearch && onSearch(e.target.value)} />
                     <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}><Icon d={icons.search} size={14} /></span>
                 </div>
@@ -109,7 +109,7 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
                         </div>
                     )}
                 </div>
-                <div className="avatar" title={userEmail}>{initials}</div>
+                <div className="avatar topbar-desktop-only" title={userEmail}>{initials}</div>
             </div>
         </div>
     );

@@ -101,7 +101,7 @@ export function IT1View({ invoices, selectedClient, credits }) {
             const element = reportRef.current;
             // Capturar el contenido forzando estilos de "Impresión Moderna"
             const canvas = await html2canvas(element, {
-                scale: 3, // Mayor resolución para evitar borrosidad
+                scale: 3,
                 useCORS: true,
                 logging: false,
                 backgroundColor: "#ffffff",
@@ -121,45 +121,24 @@ export function IT1View({ invoices, selectedClient, credits }) {
                         
                         .print-only-show { display: block !important; }
                         .no-print { display: none !important; }
-                        
-                        /* Forzar contrastes en textos y títulos */
-                        h1, h4, span, p, div { 
+                                        /* Texto oscuro globalmente para el contenido blanco */
+                        h1, h4, span, p, div:not(.pdf-print-header):not(.pdf-print-header *) { 
                             color: #0f172a !important; 
                             opacity: 1 !important;
                             -webkit-text-fill-color: #0f172a !important;
-                            font-weight: bold;
                         }
                         
                         .font-display { 
                             color: #000000 !important; 
                             font-weight: 900 !important;
-                            letter-spacing: -0.01em !important;
                         }
 
-                        /* Restaurar logo y gradientes */
-                        .logo-box {
-                            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-                            color: #ffffff !important;
-                            -webkit-print-color-adjust: exact;
-                        }
-
-                        /* Limpiar tablas y cajas */
                         .card, .kpi-card {
                             background: #ffffff !important;
-                            border: 1px solid #000000 !important;
+                            border: 1px solid #d1d5db !important;
                             box-shadow: none !important;
                             border-radius: 12px !important;
                             color: #000000 !important;
-                        }
-                        
-                        .table-header, [style*="background: var(--bg-hover)"] {
-                            background: #ffffff !important;
-                            border-bottom: 2px solid #000000 !important;
-                        }
-                        
-                        [style*="background: rgba(59,130,246,0.03)"] {
-                            background: #ffffff !important;
-                            border-top: 1px solid #000000 !important;
                         }
                         
                         .badge {
@@ -169,21 +148,32 @@ export function IT1View({ invoices, selectedClient, credits }) {
                             font-weight: 900 !important;
                         }
 
-                        .divider { background: #000000 !important; height: 1px !important; }
+                        .divider { background: #d1d5db !important; height: 1px !important; }
 
-                        /* Estilo para los cuadritos de los números de casilla (1, 10, 22...) */
-                        div[style*="width: 28"] {
-                            background: #ffffff !important;
-                            border: 1.5px solid #000000 !important;
-                            border-radius: 4px !important;
-                            color: #000000 !important;
-                            font-weight: 900 !important;
+                        /* Cabecera compacta: MÁXIMA especificidad para textos blancos */
+                        .pdf-print-header,
+                        .pdf-print-header div,
+                        .pdf-print-header span,
+                        .pdf-print-header p {
+                            background: #0f172a !important;
+                            -webkit-print-color-adjust: exact !important;
                         }
 
-                        /* Cerrar tablas de KPI con bordes más robustos */
-                        .kpi-card { border-width: 1.5px !important; }
+                        /* Texto blanco en header — alta especificidad para ganar al reset global */
+                        html body .pdf-print-header div,
+                        html body .pdf-print-header span {
+                            color: #ffffff !important;
+                            -webkit-text-fill-color: #ffffff !important;
+                            opacity: 1 !important;
+                        }
 
-                        /* Inputs como texto estático negro */
+                        /* Texto gris (subtítulos) en header */
+                        html body .pdf-print-header div[style*="#94a3b8"],
+                        html body .pdf-print-header div[style*="color: #94"] {
+                            color: #94a3b8 !important;
+                            -webkit-text-fill-color: #94a3b8 !important;
+                        }
+
                         input {
                             border: none !important;
                             background: transparent !important;
@@ -194,9 +184,26 @@ export function IT1View({ invoices, selectedClient, credits }) {
                     `;
                     clonedDoc.head.appendChild(style);
                     
-                    // Aplicar clase especial al logo para el selector de estilo arriba
-                    const logo = clonedDoc.querySelector('div[style*="var(--gradient)"]');
-                    if (logo) logo.className = "logo-box";
+                    // Aplicar clase premium a la cabecera de impresión
+                    const printHeader = clonedDoc.querySelector('.print-only-show');
+                    if (printHeader) {
+                        printHeader.classList.add('pdf-print-header');
+                        // Forzar colores directamente en el DOM — más confiable que CSS override
+                        printHeader.style.cssText = 'background: #0f172a !important; display: flex !important; justify-content: space-between; align-items: center; padding: 14px 28px;';
+                        // Forzar todos los textos del header a blanco
+                        const allEls = printHeader.querySelectorAll('*');
+                        allEls.forEach(el => {
+                            el.style.color = '#ffffff';
+                            el.style.webkitTextFillColor = '#ffffff';
+                            el.style.opacity = '1';
+                        });
+                        // Re-aplicar subtítulos grises
+                        const subtitles = printHeader.querySelectorAll('[data-muted]');
+                        subtitles.forEach(el => {
+                            el.style.color = '#94a3b8';
+                            el.style.webkitTextFillColor = '#94a3b8';
+                        });
+                    }
                 }
             });
 
@@ -287,41 +294,29 @@ export function IT1View({ invoices, selectedClient, credits }) {
 
     return (
         <div ref={reportRef} className="page-content fade-in">
-            {/* Cabecera Premium de Impresión (Solo Visible en PDF) */}
-            <div className="print-only-show" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 24, marginBottom: 40, marginTop: 40 }}>
-                {/* Logo Centrado */}
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 32 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                        <div style={{ width: 42, height: 42, background: "var(--gradient)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 900, fontSize: 22, boxShadow: "0 4px 10px rgba(59,130,246,0.2)" }}>F</div>
-                        <span style={{ fontSize: 24, fontWeight: 900, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>FLUXIA</span>
-                    </div>
-                    
-                    <div style={{ textAlign: "center" }}>
-                        <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, margin: 0, color: "var(--text-primary)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                            Reporte de Simulación Fiscal
-                        </h1>
-                        <p style={{ color: "var(--accent)", fontSize: 13, fontWeight: 700, marginTop: 32, letterSpacing: "2px" }}>
-                            DECLARACIÓN JURADA DE ITBIS (IT-1)
-                        </p>
+            {/* Cabecera Compacta de Impresión (Solo Visible en PDF) */}
+            <div className="print-only-show" style={{ background: "#0f172a", padding: "14px 28px", marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: -32 }}>
+                {/* Izquierda: Logo + Nombre + Subtítulo */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <img src="/icon-512.png" alt="Fluxia" style={{ width: 36, height: 36, objectFit: "contain" }} />
+                    <div>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#ffffff", letterSpacing: "-0.02em", lineHeight: 1 }}>FLUXIA</div>
+                        <div data-muted="true" style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, marginTop: 2 }}>Reporte de Simulación Fiscal · IT-1</div>
                     </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                    {selectedClient && (
-                        <div style={{ display: "flex", gap: 32 }}>
-                            <div>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 2 }}>Contribuyente</div>
-                                <div style={{ fontSize: 16, fontWeight: 800 }}>{selectedClient.nombre}</div>
-                                <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{selectedClient.rnc}</div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 2 }}>Periodo Fiscal</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)" }}>{meses[month - 1]} {year}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>Emisión: {new Date().toLocaleDateString()}</div>
+                {/* Centro: Cliente */}
+                {selectedClient && (
+                    <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>{selectedClient.nombre}</div>
+                        <div data-muted="true" style={{ fontSize: 10, color: "#94a3b8" }}>RNC: {selectedClient.rnc}</div>
                     </div>
+                )}
+
+                {/* Derecha: Periodo + Fecha */}
+                <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>{meses[month - 1]} {year}</div>
+                    <div data-muted="true" style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>Emisión: {new Date().toLocaleDateString("es-DO")}</div>
                 </div>
             </div>
 

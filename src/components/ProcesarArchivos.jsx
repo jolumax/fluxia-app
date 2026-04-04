@@ -20,6 +20,7 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
     const handleUpload = () => {
         const input = document.createElement("input");
         input.type = "file";
+        input.accept = "image/*,application/pdf";
         input.multiple = true;
         input.onchange = (e) => {
             const selectedFiles = Array.from(e.target.files);
@@ -325,7 +326,7 @@ export function ProcesarArchivos({ userId, selectedClient, reloadInvoices, withG
                 )}
             </div>
 
-            <div style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div className="grid-responsive" style={{ marginTop: 40, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 <div className="card" style={{ cursor: "pointer" }} onClick={() => window.open(DRIVE_FOLDER_URL, "_blank")}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <Icon d={icons.drive} size={24} stroke="#4285F4" />

@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import { sanitizePlan, sanitizeUUID } from "./utils/sanitize";
 import { updateInvoiceInAirtable } from "./utils/airtableActions";
+import { Icon } from "./components/common/Icon";
+import { icons } from "./lib/icons";
 import "./styles/App.css";
 
 // Hooks
@@ -33,19 +35,70 @@ export default function App() {
     const [isGlobalLocked, setIsGlobalLocked] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [theme, setTheme] = useState(() => localStorage.getItem("fluxia-theme") || "dark");
-    const [toast, setToast] = useState({ show: false, message: "", type: "success" });
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [toasts, setToasts] = useState([]);
+    const [confirmConfig, setConfirmConfig] = useState({ show: false, title: "", message: "", onConfirm: null });
     const [mockInvoices, setMockInvoices] = useState([]);
+    
+    // Default al mes en curso
+    // Lógica de "Mes Inteligente" para contabilidad
+    const today = new Date();
+    let targetMonth = today.getMonth();
+    let targetYear = today.getFullYear();
 
-    const showToast = (message, type = "success") => {
-        setToast({ show: true, message, type });
-        setTimeout(() => setToast(prev => ({ ...prev, show: false })), 3000);
-    };
+    // Si estamos en los primeros 10 días del mes, mostrar el mes anterior (periodo de reporte de ITBIS)
+    if (today.getDate() <= 10) {
+        if (targetMonth === 0) {
+            targetMonth = 11;
+            targetYear -= 1;
+        } else {
+            targetMonth -= 1;
+        }
+    }
+
+    const firstDay = new Date(targetYear, targetMonth, 1).toISOString().split('T')[0];
+    const lastDay = new Date(targetYear, targetMonth + 1, 0).toISOString().split('T')[0];
+    
+    const [filters, setFilters] = useState({
+        type: "todos", // todos, 606, 607
+        status: "todos", // todos, valido, error
+        dateRange: { from: firstDay, to: lastDay }
+    });
+
+    const addToast = useCallback((message, type = "info") => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 3000);
+    }, []);
+
+    const confirmAction = useCallback((title, message, onConfirm) => {
+        setConfirmConfig({ show: true, title, message, onConfirm });
+    }, []);
     
     // Uygulama Teması Değişikliği
     useEffect(() => {
         document.documentElement.setAttribute("data-theme", theme);
         localStorage.setItem("fluxia-theme", theme);
     }, [theme]);
+
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            addToast("Conexión recuperada ✅", "success");
+        };
+        const handleOffline = () => {
+            setIsOnline(false);
+            addToast("Sin conexión a internet ⚠️", "warning");
+        };
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [addToast]);
 
     const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
     
@@ -68,8 +121,15 @@ export default function App() {
         }
     }, [isGlobalLocked]);
 
-    // useAirtableInvoices ya reacciona al cambio de selectedClient?.rnc internamente.
-    // Se elimina el reload manual redundante para evitar dobles peticiones.
+    // Notificación de Procesado Completado
+    useEffect(() => {
+        if (!invoices || invoices.length === 0) return;
+        const lastCount = parseInt(localStorage.getItem("last_invoice_count") || "0");
+        if (invoices.length > lastCount && lastCount > 0) {
+            addToast(`✅ ¡Procesamiento completado! Se añadieron ${invoices.length - lastCount} nuevas facturas.`, "success");
+        }
+        localStorage.setItem("last_invoice_count", invoices.length.toString());
+    }, [invoices, addToast]);
 
     // Detectar retorno desde Whop después de pago/cambio de plan
     useEffect(() => {
@@ -79,7 +139,7 @@ export default function App() {
         const idParam = sanitizeUUID(params.get("id"));
         if (!planParam || idParam !== userId) return;
 
-        const PLAN_LIMITS = { basic: 200, pro: 500, premium: 3000 };
+        const PLAN_LIMITS = { basic: 150, pro: 500, premium: 2500 };
         const newLimit = PLAN_LIMITS[planParam];
         if (!newLimit) return;
 
@@ -106,7 +166,6 @@ export default function App() {
     }, [userId, reloadCredits]);
 
     const deleteInvoiceFromAirtable = async (airtableId) => {
-        if (!confirm("¿Estás seguro de que deseas eliminar esta factura?")) return;
         withGlobalLock(async () => {
             try {
                 const token = import.meta.env.VITE_AIRTABLE_TOKEN;
@@ -122,13 +181,13 @@ export default function App() {
                     if (setInvoices) {
                         setInvoices(prev => prev.filter(inv => inv.airtableId !== airtableId));
                     }
-                    showToast("Factura eliminada correctamente", "success");
+                    addToast("Factura eliminada correctamente", "success");
                 } else {
                     throw new Error("No se pudo eliminar de la base de datos");
                 }
             } catch (err) { 
                 console.error("Error deleting:", err);
-                showToast("Error al eliminar: " + err.message, "error");
+                addToast("Error al eliminar: " + err.message, "error");
             }
         }, "Eliminar Factura");
     };
@@ -141,27 +200,60 @@ export default function App() {
                     // Actualización Optimista: Actualizar localmente si es necesario 
                     // (aunque reloadInvoices se llama abajo, esto ayuda a la persistencia visual)
                     if (reloadInvoices) reloadInvoices();
-                    showToast("Factura actualizada correctamente", "success");
+                    addToast("Factura actualizada correctamente", "success");
                 }
             } catch (err) {
                 console.error("Error editando factura:", err);
-                showToast("Error al actualizar factura", "error");
+                addToast("Error al actualizar factura", "error");
             }
         }, "Editando Factura");
     };
 
     const displayInvoices = useMemo(() => {
-        const allInvs = [...(invoices || []), ...mockInvoices];
-        if (!searchTerm) return allInvs;
-        
-        const lowSearch = searchTerm.toLowerCase();
-        return allInvs.filter(inv => {
-            const emisor = inv?.emisor ? String(inv.emisor).toLowerCase() : "";
-            const ncf = inv?.ncf ? String(inv.ncf).toLowerCase() : "";
-            const rnc = inv?.rnc ? String(inv.rnc).toLowerCase() : "";
-            return emisor.includes(lowSearch) || ncf.includes(lowSearch) || rnc.includes(lowSearch);
-        });
-    }, [invoices, mockInvoices, searchTerm]);
+        let filtered = [...(invoices || [])];
+
+        // 1. Filtro de Texto (Buscador)
+        if (searchTerm) {
+            const lowSearch = searchTerm.toLowerCase();
+            filtered = filtered.filter(inv => {
+                const emisor = inv?.emisor ? String(inv.emisor).toLowerCase() : "";
+                const ncf = inv?.ncf ? String(inv.ncf).toLowerCase() : "";
+                const rnc = inv?.rnc ? String(inv.rnc).toLowerCase() : "";
+                return emisor.includes(lowSearch) || ncf.includes(lowSearch) || rnc.includes(lowSearch);
+            });
+        }
+
+        // 2. Filtro de Tipo Fiscal (606/607)
+        if (filters.type !== "todos") {
+            filtered = filtered.filter(inv => inv.tipo_fiscal === filters.type);
+        }
+
+        // 3. Filtro de Estado (Valido/Error)
+        if (filters.status !== "todos") {
+            filtered = filtered.filter(inv => {
+                const isError = inv.estado === "error"; // Ajustar según lógica real de error
+                return filters.status === "error" ? isError : !isError;
+            });
+        }
+
+        // 4. Filtro de Fecha (Desde/Hasta)
+        const parseDateToISO = (dateStr) => {
+            if (!dateStr || typeof dateStr !== "string" || dateStr === "—") return "";
+            if (dateStr.includes("-")) return dateStr; // Already YYYY-MM-DD
+            const parts = dateStr.split("/");
+            if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`; // Convert DD/MM/YYYY to YYYY-MM-DD
+            return dateStr;
+        };
+
+        if (filters.dateRange.from) {
+            filtered = filtered.filter(inv => parseDateToISO(inv.fecha) >= filters.dateRange.from);
+        }
+        if (filters.dateRange.to) {
+            filtered = filtered.filter(inv => parseDateToISO(inv.fecha) <= filters.dateRange.to);
+        }
+
+        return filtered;
+    }, [invoices, searchTerm, filters]);
 
     if (session === undefined || (session && credits === undefined)) {
         return (
@@ -179,6 +271,7 @@ export default function App() {
         dashboard: <Dashboard 
             setPage={setPage} 
             invoices={displayInvoices} 
+            rawInvoices={invoices}
             mockInvoices={mockInvoices}
             setMockInvoices={setMockInvoices}
             dataLoading={dataLoading} 
@@ -187,18 +280,39 @@ export default function App() {
             reloadInvoices={reloadInvoices} 
             deleteInvoice={deleteInvoiceFromAirtable} 
             editInvoice={editInvoiceInAirtable} 
+            filters={filters}
+            setFilters={setFilters}
+            confirmAction={confirmAction}
         />,
         procesar: <ProcesarArchivos setPage={setPage} userId={userId} selectedClient={selectedClient} credits={credits} reloadInvoices={reloadInvoices} withGlobalLock={withGlobalLock} isGlobalLocked={isGlobalLocked} />,
         clientes: <ClientsView userId={userId} clients={clients} reloadClients={reloadClients} setSelectedClient={setSelectedClient} setPage={setPage} selectedClient={selectedClient} clientsLoading={clientsLoading} />,
         estadisticas: <Estadisticas invoices={displayInvoices} />,
         drive: <DriveView invoices={displayInvoices} />,
-        sheets: <SheetsView invoices={displayInvoices} reloadInvoices={reloadInvoices} deleteInvoice={deleteInvoiceFromAirtable} editInvoice={editInvoiceInAirtable} dataLoading={dataLoading} credits={credits} selectedClient={selectedClient} />,
+        sheets: <SheetsView 
+            invoices={displayInvoices} 
+            reloadInvoices={reloadInvoices} 
+            deleteInvoice={deleteInvoiceFromAirtable} 
+            editInvoice={editInvoiceInAirtable} 
+            dataLoading={dataLoading} 
+            credits={credits} 
+            selectedClient={selectedClient} 
+            filters={filters}
+            setFilters={setFilters}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            confirmAction={confirmAction}
+        />,
         reportes: <Reporteria invoices={displayInvoices} credits={credits} selectedClient={selectedClient} />,
         configuracion: <Configuracion userId={userId} userEmail={session?.user?.email} credits={credits} reloadCredits={reloadCredits} />,
         it1: <IT1View 
             invoices={displayInvoices} 
-            selectedClient={selectedClient} 
             credits={credits} 
+            selectedClient={selectedClient} 
+            userId={userId} 
+            periodo={filters.period} 
+            refreshData={reloadInvoices}
+            addToast={addToast}
+            confirmAction={confirmAction}
         />,
         desgloses: <DesglosesView invoices={displayInvoices} loading={dataLoading} credits={credits} />
     };
@@ -209,6 +323,38 @@ export default function App() {
                 <LoginScreen />
             ) : (
                 <div className="app-layout" style={{ filter: isGlobalLocked ? "grayscale(0.5) opacity(0.8)" : "none", pointerEvents: isGlobalLocked ? "none" : "auto", transition: "all 0.3s ease" }}>
+                    {!isOnline && (
+                        <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: "var(--danger)", color: "white", padding: "8px", textAlign: "center", zIndex: 10000, fontSize: 12 }}>
+                            ⚠️ Estás trabajando sin conexión. Algunos cambios podrían no guardarse.
+                        </div>
+                    )}
+                    <div className="toast-container" style={{ position: "fixed", top: 20, right: 20, zIndex: 10000, display: "flex", flexDirection: "column", gap: 10 }}>
+                        {toasts.map(t => (
+                            <div key={t.id} className={`toast ${t.type}`} style={{ background: "var(--bg-card)", padding: "12px 20px", borderRadius: 8, border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
+                                {t.message}
+                            </div>
+                        ))}
+                    </div>
+
+                    {confirmConfig.show && (
+                        <div className="modal-overlay" style={{ zIndex: 11000 }}>
+                            <div className="confirmation-card">
+                                <div style={{ background: "rgba(239,68,68,0.1)", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                                    <Icon d={icons.trash} size={32} style={{ color: "var(--danger)" }} />
+                                </div>
+                                <h2 className="font-display" style={{ fontSize: 22, color: "var(--text-primary)", marginBottom: 12 }}>{confirmConfig.title}</h2>
+                                <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 28, lineHeight: 1.5 }}>{confirmConfig.message}</p>
+                                <div style={{ display: "flex", gap: 12 }}>
+                                    <button className="btn-secondary" style={{ flex: 1, padding: "12px" }} onClick={() => setConfirmConfig({ ...confirmConfig, show: false })}>Cancelar</button>
+                                    <button className="btn-primary" style={{ flex: 1, background: "var(--danger)", padding: "12px" }} onClick={() => {
+                                        confirmConfig.onConfirm();
+                                        setConfirmConfig({ ...confirmConfig, show: false });
+                                    }}>Confirmar</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <Sidebar 
                         active={page} 
                         setActive={(p) => { setPage(p); setIsSidebarOpen(false); }} 
@@ -236,20 +382,6 @@ export default function App() {
                         </div>
                     )}
 
-                    {toast.show && (
-                        <div className={`toast-notification ${toast.type}`} style={{
-                            position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-                            background: toast.type === "success" ? "var(--success)" : "var(--danger)",
-                            color: "white", padding: "12px 24px", borderRadius: 12, fontWeight: 700,
-                            boxShadow: "0 10px 25px rgba(0,0,0,0.2)", zIndex: 10000,
-                            display: "flex", alignItems: "center", gap: 10, animation: "slide-up 0.3s ease"
-                        }}>
-                            <div style={{ background: "rgba(255,255,255,0.2)", width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>
-                                {toast.type === "success" ? "✓" : "!"}
-                            </div>
-                            {toast.message}
-                        </div>
-                    )}
                 </div>
             )}
         </>

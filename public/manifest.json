@@ -1,0 +1,19 @@
+{
+  "short_name": "Fluxia",
+  "name": "Fluxia - Gestión Fiscal de Alta Gama",
+  "description": "Aplicación fiscal y contable impulsada por IA para el mercado dominicano.",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0a0e1a",
+  "background_color": "#0a0e1a",
+  "orientation": "portrait",
+  "scope": "/"
+}
