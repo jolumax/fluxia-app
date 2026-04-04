@@ -29,8 +29,15 @@ import { IT1View } from "./components/IT1View";
 import { DesglosesView } from "./components/DesglosesView";
 
 export default function App() {
-    const session = useSession();
+    const { session, authEvent } = useSession();
     const [page, setPage] = useState("dashboard");
+    const [isResetting, setIsResetting] = useState(false);
+
+    useEffect(() => {
+        if (authEvent === "PASSWORD_RECOVERY") {
+            setIsResetting(true);
+        }
+    }, [authEvent]);
     const [searchTerm, setSearchTerm] = useState("");
     const [isGlobalLocked, setIsGlobalLocked] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -145,6 +152,8 @@ export default function App() {
 
         // Limpiar URL inmediatamente
         window.history.replaceState({}, "", "/");
+
+
 
         const updatePlan = async () => {
             try {
@@ -319,8 +328,14 @@ export default function App() {
 
     return (
         <>
-            {!session ? (
-                <LoginScreen />
+            {!session || isResetting ? (
+                <LoginScreen 
+                    isResetting={isResetting} 
+                    onResetDone={() => {
+                        setIsResetting(false);
+                        window.location.href = "/";
+                    }} 
+                />
             ) : (
                 <div className="app-layout" style={{ filter: isGlobalLocked ? "grayscale(0.5) opacity(0.8)" : "none", pointerEvents: isGlobalLocked ? "none" : "auto", transition: "all 0.3s ease" }}>
                     {!isOnline && (
