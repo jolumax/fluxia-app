@@ -24,8 +24,8 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
         <div className="topbar">
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 {/* Mobile Menu Toggle */}
-                <button className="btn-ghost mobile-only-flex" onClick={onMenuClick} style={{ padding: 6, marginLeft: -6 }}>
-                    <Icon d="M2.25 12h19.5M2.25 6h19.5M2.25 18h19.5" size={20} />
+                <button className="btn-ghost mobile-only-flex" onClick={onMenuClick} style={{ padding: 8, marginLeft: -6, color: "var(--accent)", alignItems: "center" }}>
+                    <Icon d={icons.menu} size={24} stroke="var(--accent)" />
                 </button>
                 {/* Page Title */}
                 <h1 className="font-display" style={{ fontSize: 17, fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap" }}>

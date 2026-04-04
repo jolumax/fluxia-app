@@ -27,7 +27,7 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
             {/* Mobile Overlay */}
             {isOpen && <div className="modal-overlay" style={{ zIndex: 1500 }} onClick={onClose} />}
             
-            <nav className={`sidebar slide-in ${isOpen ? "mobile-open" : ""}`}>
+            <nav className={`sidebar ${isOpen ? "mobile-open" : ""}`}>
                 <div className="sidebar-logo" style={{ 
                     padding: "24px 20px", 
                     marginBottom: 10,
@@ -84,18 +84,12 @@ export function Sidebar({ active, setActive, onLogout, userEmail, credits, isOpe
                         </div>
                     </div>
                     {/* Close Button Mobile */}
-                    <button className="btn-ghost mobile-only" onClick={onClose} style={{ 
-                        width: 44, 
-                        height: 44, 
-                        display: "flex", 
-                        alignItems: "center", 
-                        justifyContent: "center",
-                        borderRadius: "50%",
-                        background: "rgba(255,255,255,0.05)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        marginRight: -10
-                    }}>
-                        <Icon d={icons.x} size={20} stroke="var(--text-primary)" />
+                    <button 
+                        className="btn-ghost mobile-only-flex" 
+                        onClick={(e) => { e.stopPropagation(); onClose(); }} 
+                        style={{ padding: 10, color: "var(--text-primary)", cursor: "pointer", alignItems: "center", justifyContent: "center", pointerEvents: "auto", zIndex: 100 }}
+                    >
+                        <Icon d={icons.x} size={32} stroke="#ffffff" />
                     </button>
                 </div>
 

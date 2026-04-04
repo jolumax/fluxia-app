@@ -39,4 +39,5 @@ export const icons = {
     moon: "M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
     arrowUp: "M12 19V5M5 12l7-7 7 7",
     arrowDown: "M12 5v14M19 12l-7 7-7-7",
+    menu: "M3 12h18M3 6h18M3 18h18",
 };
