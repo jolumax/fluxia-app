@@ -27,6 +27,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { Onboarding } from "./components/Onboarding";
 import { IT1View } from "./components/IT1View";
 import { DesglosesView } from "./components/DesglosesView";
+import { InstalliOSPrompt } from "./components/InstalliOSPrompt";
 
 export default function App() {
     const { session, authEvent } = useSession();
@@ -398,7 +399,7 @@ export default function App() {
                             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>Procesando...</span>
                         </div>
                     )}
-
+                    <InstalliOSPrompt />
                 </div>
             )}
         </>
