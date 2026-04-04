@@ -40,7 +40,7 @@ export function Estadisticas({ invoices }) {
 
     return (
         <div className="page-content fade-in">
-            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24 }}>
+            <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 24 }}>
                 <div className="card" style={{ padding: 24 }}>
                     <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 28, display: "flex", alignItems: "center", gap: 10 }}>
                         Tendencia de Gastos Mensuales ({new Date().getFullYear()})

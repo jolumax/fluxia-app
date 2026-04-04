@@ -120,7 +120,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                 </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginBottom: 24 }}>
                 <div className="kpi-card">
                     <div style={{ fontSize: 11, fontWeight: 700 }}>TOTAL COMPRAS</div>
                     <div style={{ fontSize: 24, fontWeight: 800 }}>RD${stats.total.toLocaleString()}</div>
@@ -129,7 +129,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                     <div style={{ fontSize: 11, fontWeight: 700 }}>ITBIS ADELANTADO</div>
                     <div style={{ fontSize: 24, fontWeight: 800, color: "var(--accent)" }}>RD${stats.itbis.toLocaleString()}</div>
                 </div>
-                <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                     <button className="btn-primary" onClick={handleExport606Txt} style={{ flex: 1 }}>
                         <Icon d={icons.layers} size={16} /> Exportar .TXT (606)
                     </button>
@@ -146,7 +146,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
                 <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
                     <Icon d={icons.layers} size={18} stroke="var(--accent)" /> Formatos Oficiales DGII
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
                     <div style={{ padding: 16, borderRadius: 12, background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Formato 606 (Compras)</div>
                         <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>Archivo de texto (.txt) listo para subir a la oficina virtual.</p>
@@ -162,7 +162,7 @@ export function Reporteria({ invoices, credits, selectedClient }) {
 
             <div className="card" style={{ marginTop: 24 }}>
                 <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Guía Fiscal y Enlaces Útiles</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                         <div style={{ padding: 12, borderRadius: 8, background: "rgba(59,130,246,0.05)", border: "1px solid rgba(59,130,246,0.1)" }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>FECHA LÍMITE 606</div>

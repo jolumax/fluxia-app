@@ -82,7 +82,7 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
 
                 {step === 2 && (
                     <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
+                        <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
                             {[
                                 { id: "basic", t: "Básico", desc: "150 facturas/mes", price: "$25.00", color: "var(--text-muted)" },
                                 { id: "pro", t: "Pro", desc: "500 facturas/mes", price: "$56.00", color: "var(--accent)", popular: true },

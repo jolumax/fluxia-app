@@ -179,7 +179,7 @@ export function IT1View({ invoices, selectedClient, credits }) {
                 )}
 
                 {/* Dashboard Stats */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
+                <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24 }}>
                     <div className="card" style={{ padding: 24, borderLeft: "4px solid var(--accent)" }}>
                         <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>Total Ventas (Bruto)</div>
                         <div style={{ fontSize: 24, fontWeight: 950, color: "var(--text-primary)" }}>{formatCurrency(derivedValues.totalVentas)}</div>
@@ -193,7 +193,7 @@ export function IT1View({ invoices, selectedClient, credits }) {
                         <div style={{ fontSize: 24, fontWeight: 950, color: "#10b981" }}>{formatCurrency(derivedValues.itbisCompras)}</div>
                     </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: isForPrint ? "1fr 300px" : "1fr 340px", gap: 32, alignItems: "start" }}>
+                <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: isForPrint ? "1fr 300px" : "1fr 340px", gap: 32, alignItems: "start" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
                         {/* ANEXO A SECTION */}
                         {isAnexo && (

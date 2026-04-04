@@ -111,7 +111,7 @@ export function ClientsView({ userId, clients, reloadClients, setSelectedClient,
                 </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
+            <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
                 {clientsLoading ? (
                     [1, 2, 3, 4, 5, 6].map(i => <SkeletonCard key={i} />)
                 ) : clients.map(c => (

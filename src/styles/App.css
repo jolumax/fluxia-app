@@ -1026,6 +1026,10 @@ table tbody tr:hover {
   .topbar {
     padding: 0 20px;
   }
+
+  .grid-responsive {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 

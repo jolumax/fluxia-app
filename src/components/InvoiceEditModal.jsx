@@ -50,7 +50,7 @@ export function InvoiceEditModal({ invoice, onSave, onClose }) {
                         <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Emisor / Razón Social</label>
                         <input type="text" className="input-field" name="emisor" value={formData.emisor} onChange={handleChange} required />
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                         <div>
                             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>RNC</label>
                             <input type="text" className="input-field" name="rnc" value={formData.rnc} onChange={handleChange} required />
@@ -60,7 +60,7 @@ export function InvoiceEditModal({ invoice, onSave, onClose }) {
                             <input type="text" className="input-field" name="ncf" value={formData.ncf} onChange={handleChange} required />
                         </div>
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                         <div>
                             <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8 }}>Monto Facturado (RD$)</label>
                             <input type="number" step="0.01" className="input-field" name="monto" value={formData.monto} onChange={handleChange} required />

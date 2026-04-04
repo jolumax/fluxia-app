@@ -107,7 +107,7 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
                         <div className="divider" style={{ margin: '20px 0' }} />
 
                         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 16 }}>Plan y Suscripción</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+                        <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
                             {Object.entries(PLAN_INFO).map(([key, info]) => {
                                 const isCurrent = credits?.plan === key;
                                 return (
