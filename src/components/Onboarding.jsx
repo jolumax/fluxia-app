@@ -16,8 +16,6 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
             const cleanEmpresa = sanitizeName(formData.empresa);
             if (!cleanEmpresa) { alert("⚠️ El nombre de la empresa es requerido."); setLoading(false); return; }
 
-            const limits = { basic: 150, pro: 500, premium: 2500 };
-
             await supabase.from("usuarios").upsert([{
                 id: userId,
                 email: userEmail,
@@ -28,9 +26,9 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
 
             await supabase.from("config_clientes").upsert([{
                 user_id: userId,
-                plan: formData.plan,
+                plan: "trial", // Mantenemos el estatus como prueba
                 creditos_usados: 0,
-                creditos_limite: limits[formData.plan],
+                creditos_limite: 10, // 👈 10 créditos gratis iniciales
                 fecha_renovacion: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
             }], { onConflict: 'user_id' });
 
