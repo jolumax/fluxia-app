@@ -154,26 +154,9 @@ export default function App() {
         // Limpiar URL inmediatamente
         window.history.replaceState({}, "", "/");
 
-
-
-        const updatePlan = async () => {
-            try {
-                const { error } = await supabase.from("config_clientes").update({
-                    plan: planParam,
-                    creditos_limite: newLimit,
-                    creditos_usados: 0,
-                    fecha_renovacion: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-                }).eq("user_id", userId);
-                if (error) throw error;
-                reloadCredits();
-                alert(`✅ ¡Plan actualizado a ${planParam.toUpperCase()} correctamente! Ahora tienes ${newLimit} créditos disponibles.`);
-            } catch (err) {
-                console.error("❌ Error actualizando plan:", err);
-                alert("❌ Error al actualizar el plan: " + err.message);
-            }
-        };
-        updatePlan();
-    }, [userId, reloadCredits]);
+        // Avisar al usuario; no alteramos la base de datos visualmente
+        alert(`¡Bienvenido! Has comenzado tu prueba de Fluxia con 10 créditos. Tus límites (${newLimit} créditos) se activarán 100% al procesarse tu membresía.`);
+    }, [userId]);
 
     const deleteInvoiceFromAirtable = async (airtableId) => {
         withGlobalLock(async () => {

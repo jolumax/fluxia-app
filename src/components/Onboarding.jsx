@@ -46,7 +46,7 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
 
             const whopLink = WHOP_CHECKOUTS[formData.plan];
             if (whopLink) {
-                window.location.href = `${whopLink}?redirect_url=${encodeURIComponent(`${window.location.origin}/?plan=${formData.plan}&id=${userId}`)}`;
+                window.location.href = `${whopLink}?redirect_url=${encodeURIComponent(`${window.location.origin}/?plan=${formData.plan}&id=${userId}`)}&email=${encodeURIComponent(userEmail)}`;
             } else {
                 if (reloadCredits) reloadCredits();
             }
