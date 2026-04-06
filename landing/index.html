@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fluxia – Inteligencia Fiscal para tu Empresa</title>
+  <meta name="description" content="Fluxia automatiza la gestión fiscal de tu empresa con IA. Procesa facturas, genera reportes DGII, valida NCF en tiempo real."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<nav id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <span class="logo-mark">⚡</span>
+      <span class="logo-text">Fluxia</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Funciones</a></li>
+      <li><a href="#how">Cómo funciona</a></li>
+      <li><a href="#pricing">Planes</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="https://fluxia-app-teal.vercel.app/" class="btn-ghost">Iniciar sesión</a>
+      <a href="#pricing" class="btn-primary">Comenzar gratis</a>
+    </div>
+    <button class="hamburger" id="hamburger"><span></span><span></span><span></span></button>
+  </div>
+  <div class="mobile-menu" id="mobile-menu">
+    <a href="#features">Funciones</a>
+    <a href="#how">Cómo funciona</a>
+    <a href="#pricing">Planes</a>
+    <hr class="menu-divider"/>
+    <a href="https://fluxia-app-teal.vercel.app/" class="btn-ghost mobile-btn">Iniciar sesión</a>
+    <a href="#pricing" class="btn-primary mobile-btn">Comenzar gratis</a>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section id="hero">
+  <div class="hero-bg-grid"></div>
+  <div class="hero-glow g1"></div>
+  <div class="hero-glow g2"></div>
+  <div class="hero-glow g3"></div>
+
+  <div class="container hero-layout">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-pulse"></span>
+        Inteligencia Fiscal con IA · República Dominicana
+      </div>
+      <h1 class="hero-title">
+        Tu contabilidad,<br/>
+        <span class="gradient-text">automatizada<br/>al instante</span>
+      </h1>
+      <p class="hero-subtitle">Fluxia procesa tus facturas con OCR avanzado, las categoriza con IA, valida NCF ante la DGII y genera reportes 606/607 e IT-1 listos para someter.</p>
+      <div class="hero-ctas">
+        <a href="#pricing" class="btn-primary btn-lg btn-shine">
+          Prueba gratis 7 días
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#how" class="btn-ghost btn-lg">Ver cómo funciona</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-num">99.2%</span>
+          <span class="stat-label">Precisión OCR</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">0 min</span>
+          <span class="stat-label">Entrada manual</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">100%</span>
+          <span class="stat-label">Compliance DGII</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-mockup">
+      <div class="mockup-glow-ring"></div>
+      <div class="mockup-window">
+        <div class="mockup-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="mockup-url">app.fluxia.do/dashboard</span>
+          <span class="mockup-status"><span class="status-dot"></span>En vivo</span>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-sidebar">
+            <div class="mock-logo">⚡ Fluxia</div>
+            <div class="mock-item active">📊 Dashboard</div>
+            <div class="mock-item">🧾 Facturas</div>
+            <div class="mock-item">🧠 Cerebro Fiscal</div>
+            <div class="mock-item">📋 Reportes</div>
+          </div>
+          <div class="mockup-main">
+            <div class="mock-header">Resumen · Abril 2026</div>
+            <div class="mock-cards">
+              <div class="mock-card">
+                <div class="mc-label">Facturas/mes</div>
+                <div class="mc-val">147</div>
+                <div class="mc-badge up">↑ 23%</div>
+              </div>
+              <div class="mock-card">
+                <div class="mc-label">ITBIS acum.</div>
+                <div class="mc-val">RD$84k</div>
+                <div class="mc-badge up">↑ 11%</div>
+              </div>
+              <div class="mock-card">
+                <div class="mc-label">NCF inválidos</div>
+                <div class="mc-val">0</div>
+                <div class="mc-badge ok">✓ OK</div>
+              </div>
+            </div>
+            <div class="mock-chart">
+              <div class="mc-title">Gastos por categoría</div>
+              <div class="mock-bars">
+                <div class="mb" style="--h:70%"><span>IT</span></div>
+                <div class="mb" style="--h:45%"><span>Srv</span></div>
+                <div class="mb" style="--h:85%"><span>Adm</span></div>
+                <div class="mb" style="--h:55%"><span>Mkt</span></div>
+                <div class="mb" style="--h:30%"><span>Log</span></div>
+              </div>
+            </div>
+            <div class="mock-activity">
+              <div class="activity-item">
+                <span class="act-dot green"></span>
+                <span>Factura #0047 procesada</span>
+                <span class="act-time">hace 2m</span>
+              </div>
+              <div class="activity-item">
+                <span class="act-dot blue"></span>
+                <span>NCF validado · B0100000123</span>
+                <span class="act-time">hace 5m</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRUSTED ── -->
+<section id="trusted">
+  <div class="container">
+    <p class="trusted-label">Compatible con las herramientas que ya usas</p>
+    <div class="trusted-logos">
+      <span class="tbadge">🗂 Google Drive</span>
+      <span class="tbadge">📊 Airtable</span>
+      <span class="tbadge">📱 Telegram</span>
+      <span class="tbadge">🤖 GPT-4o</span>
+      <span class="tbadge">🏦 DGII</span>
+      <span class="tbadge">🔗 N8N</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section id="features">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">Funcionalidades</span>
+      <h2>Todo lo que necesitas para<br/><span class="gradient-text">gestionar tus impuestos</span></h2>
+      <p>Desde el escaneo hasta el reporte DGII, automatizado por completo.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card featured">
+        <div class="feature-icon-wrap">
+          <div class="fi">🧾</div>
+        </div>
+        <div class="feature-body">
+          <h3>OCR + IA para Facturas</h3>
+          <p>La IA extrae emisor, fecha, ITBIS, totales y NCF con 99.2% de precisión desde cualquier imagen o PDF.</p>
+          <div class="ftag">✦ Potenciado por GPT-4o</div>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="fi">🏷️</div>
+        <h3>Categorización Automática</h3>
+        <p>Motor local que clasifica facturas en categorías contables sin costo de API adicional.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fi">✅</div>
+        <h3>Validación NCF en Tiempo Real</h3>
+        <p>Verifica todos los NCF contra los registros oficiales de la DGII antes de procesar.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fi">🧠</div>
+        <h3>Cerebro Fiscal (IT-1)</h3>
+        <p>Simula y genera tu declaración IT-1 con cálculos de ITBIS, adelantos y retenciones.</p>
+        <div class="ftag">Plan Pro / Premium</div>
+      </div>
+      <div class="feature-card">
+        <div class="fi">📋</div>
+        <h3>Reportes 606 y 607</h3>
+        <p>Exporta los formatos oficiales DGII listos para importar al portal sin ajustes manuales.</p>
+        <div class="ftag">Plan Pro / Premium</div>
+      </div>
+      <div class="feature-card">
+        <div class="fi">🔔</div>
+        <h3>Alertas por Telegram</h3>
+        <p>Notificaciones instantáneas al procesar facturas, detectar NCF inválidos o generar reportes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section id="how">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">Proceso</span>
+      <h2>Simple. Rápido.<br/><span class="gradient-text">Completamente automático.</span></h2>
+    </div>
+    <div class="steps-wrapper">
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-big-icon">📤</div>
+          <h3>Sube tu factura</h3>
+          <p>Foto, PDF o desde Google Drive. Cualquier formato de factura dominicana o internacional.</p>
+        </div>
+        <div class="step-conn">
+          <div class="conn-line"></div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-big-icon">🤖</div>
+          <h3>La IA procesa y categoriza</h3>
+          <p>En segundos extrae datos fiscales, valida el NCF y clasifica en la categoría correcta.</p>
+        </div>
+        <div class="step-conn">
+          <div class="conn-line"></div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-big-icon">📊</div>
+          <h3>Dashboard y reportes listos</h3>
+          <p>Accede a tu dashboard actualizado, descarga el 606/607 o simula tu IT-1.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section id="pricing">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">Planes</span>
+      <h2>Elige el plan que<br/><span class="gradient-text">impulsa tu negocio</span></h2>
+      <p>Comienza con 10 créditos de prueba. Sin tarjeta de crédito.</p>
+    </div>
+    <div class="pricing-grid">
+
+      <!-- Basic -->
+      <div class="pricing-card">
+        <div class="pname">Basic</div>
+        <div class="pprice">
+          <span class="pamount">$25</span>
+          <span class="pperiod">/mes</span>
+        </div>
+        <div class="pcredits">150 créditos / mes</div>
+        <ul class="pfeatures">
+          <li class="yes">OCR de facturas con IA</li>
+          <li class="yes">Categorización automática</li>
+          <li class="yes">Validación NCF básica</li>
+          <li class="yes">Dashboard fiscal</li>
+          <li class="yes">Alertas Telegram</li>
+          <li class="no">Cerebro Fiscal IT-1</li>
+          <li class="no">Exportación 606/607</li>
+        </ul>
+        <a href="https://whop.com/checkout/plan_RrfZ9FAZn65kx" class="btn-plan">Comenzar →</a>
+      </div>
+
+      <!-- Pro (popular) -->
+      <div class="pricing-card popular">
+        <div class="pop-badge">⭐ Más popular</div>
+        <div class="pname">Pro</div>
+        <div class="pprice">
+          <span class="pamount">$56</span>
+          <span class="pperiod">/mes</span>
+        </div>
+        <div class="pcredits">500 créditos / mes</div>
+        <ul class="pfeatures">
+          <li class="yes">Todo lo de Basic</li>
+          <li class="yes"><strong>Cerebro Fiscal IT-1</strong></li>
+          <li class="yes"><strong>Exportación 606 y 607</strong></li>
+          <li class="yes">Desglose detallado ITBIS</li>
+          <li class="yes">Multi-empresa</li>
+          <li class="yes">Soporte prioritario</li>
+          <li class="yes">7 días de prueba gratis</li>
+        </ul>
+        <a href="https://whop.com/checkout/plan_ldaj8xJ6vh51X" class="btn-primary btn-plan-p">Comenzar gratis →</a>
+      </div>
+
+      <!-- Premium -->
+      <div class="pricing-card">
+        <div class="pname">Premium</div>
+        <div class="pprice">
+          <span class="pamount">$129</span>
+          <span class="pperiod">.99/mes</span>
+        </div>
+        <div class="pcredits">2,500 créditos / mes</div>
+        <ul class="pfeatures">
+          <li class="yes">Todo lo de Pro</li>
+          <li class="yes">Volumen alto de facturas</li>
+          <li class="yes">API personalizada</li>
+          <li class="yes">OpenAI key propia</li>
+          <li class="yes">Integración WhatsApp</li>
+          <li class="yes">Onboarding dedicado</li>
+          <li class="yes">SLA garantizado</li>
+        </ul>
+        <a href="https://whop.com/checkout/plan_gDhFpP4VsnImM" class="btn-plan">Contactar →</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── TESTIMONIALS ── -->
+<section id="testimonials">
+  <div class="container">
+    <div class="section-header">
+      <span class="section-tag">Experiencias</span>
+      <h2>Lo que dicen nuestros<br/><span class="gradient-text">clientes</span></h2>
+    </div>
+    <div class="tgrid">
+      <div class="tcard">
+        <div class="stars">★★★★★</div>
+        <p>"Antes tardaba 3 horas en organizar las facturas del mes. Ahora lo hago en 10 minutos. El 606 me sale perfecto."</p>
+        <div class="tauthor">
+          <div class="tavatar">MR</div>
+          <div>
+            <div class="tname">María Rodríguez</div>
+            <div class="trole">Contadora · Santo Domingo</div>
+          </div>
+        </div>
+      </div>
+      <div class="tcard featured-t">
+        <div class="stars">★★★★★</div>
+        <p>"El Cerebro Fiscal me salvó en la declaración de IT-1. Detectó un error de retención que hubiera significado una multa enorme."</p>
+        <div class="tauthor">
+          <div class="tavatar">CL</div>
+          <div>
+            <div class="tname">Carlos López</div>
+            <div class="trole">CEO · TechNet Solutions</div>
+          </div>
+        </div>
+      </div>
+      <div class="tcard">
+        <div class="stars">★★★★★</div>
+        <p>"La validación NCF en tiempo real es fantástica. Ya no recibimos facturas inválidas de proveedores."</p>
+        <div class="tauthor">
+          <div class="tavatar">AP</div>
+          <div>
+            <div class="tname">Ana Peña</div>
+            <div class="trole">CFO · Grupo Peña &amp; Asociados</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section id="cta">
+  <div class="cta-glow"></div>
+  <div class="cta-particles">
+    <span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <div class="container cta-content">
+    <div class="cta-icon">⚡</div>
+    <h2>Empieza hoy con<br/><span class="gradient-text">10 créditos gratis</span></h2>
+    <p>Sin tarjeta de crédito. En 2 minutos procesas tu primera factura.</p>
+    <a href="https://fluxia-app-teal.vercel.app/" class="btn-primary btn-lg btn-glow btn-shine">
+      Crear mi cuenta gratis
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+    <p class="cta-note">✓ 7 días de prueba Pro &nbsp;·&nbsp; ✓ Sin compromiso &nbsp;·&nbsp; ✓ Cancela cuando quieras</p>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer id="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <div class="footer-logo">
+        <span class="logo-mark">⚡</span>
+        <span class="logo-text">Fluxia</span>
+      </div>
+      <p>Inteligencia Fiscal para empresas dominicanas.<br/>Cumple con la DGII sin esfuerzo.</p>
+      <div class="footer-socials">
+        <a href="mailto:soporte@fluxia.do" class="social-pill">✉ soporte@fluxia.do</a>
+        <a href="#" class="social-pill">✈ Telegram</a>
+      </div>
+    </div>
+    <div class="footer-links">
+      <div class="fcol">
+        <h4>Producto</h4>
+        <a href="#features">Funciones</a>
+        <a href="#pricing">Precios</a>
+        <a href="#how">Cómo funciona</a>
+      </div>
+      <div class="fcol">
+        <h4>Legal</h4>
+        <a href="#">Términos de uso</a>
+        <a href="#">Privacidad</a>
+      </div>
+      <div class="fcol">
+        <h4>Contacto</h4>
+        <a href="mailto:soporte@fluxia.do">soporte@fluxia.do</a>
+        <a href="#">Telegram</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2026 Fluxia &nbsp;·&nbsp; Hecho en República Dominicana 🇩🇴</p>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

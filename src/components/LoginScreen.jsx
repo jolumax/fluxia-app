@@ -25,7 +25,13 @@ export function LoginScreen({ isResetting, onResetDone }) {
     const doRegister = async () => {
         setLoading(true);
         setError(null);
-        const { data, error } = await supabase.auth.signUp({ email, password: pass });
+        const { data, error } = await supabase.auth.signUp({ 
+            email, 
+            password: pass,
+            options: {
+                emailRedirectTo: window.location.origin
+            }
+        });
         if (error) {
             setError(error.message);
         } else if (data?.user && !data?.session) {
@@ -39,7 +45,9 @@ export function LoginScreen({ isResetting, onResetDone }) {
     const doReset = async () => {
         setLoading(true);
         setError(null);
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin
+        });
         if (error) setError(error.message);
         else setSuccessMessage("¡Enlace enviado! Revisa tu correo.");
         setLoading(false);
