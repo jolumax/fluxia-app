@@ -278,7 +278,7 @@ export default function App() {
             confirmAction={confirmAction}
         />,
         procesar: <ProcesarArchivos setPage={setPage} userId={userId} selectedClient={selectedClient} credits={credits} reloadInvoices={reloadInvoices} withGlobalLock={withGlobalLock} isGlobalLocked={isGlobalLocked} />,
-        clientes: <ClientsView userId={userId} clients={clients} reloadClients={reloadClients} setSelectedClient={setSelectedClient} setPage={setPage} selectedClient={selectedClient} clientsLoading={clientsLoading} />,
+        clientes: <ClientsView userId={userId} clients={clients} reloadClients={reloadClients} setSelectedClient={setSelectedClient} setPage={setPage} selectedClient={selectedClient} clientsLoading={clientsLoading} credits={credits} />,
         estadisticas: <Estadisticas invoices={displayInvoices} />,
         drive: <DriveView invoices={displayInvoices} />,
         sheets: <SheetsView 

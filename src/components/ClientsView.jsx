@@ -5,7 +5,7 @@ import { supabase } from "../lib/supabase";
 import { SkeletonCard } from "./common/Skeleton";
 import { sanitizeName, sanitizeRNC } from "../utils/sanitize";
 
-export function ClientsView({ userId, clients, reloadClients, setSelectedClient, setPage, selectedClient, clientsLoading }) {
+export function ClientsView({ userId, clients, reloadClients, setSelectedClient, setPage, selectedClient, clientsLoading, credits }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState(null);
     const [formData, setFormData] = useState({ nombre: "", rnc: "", sector: "" });
@@ -35,11 +35,34 @@ export function ClientsView({ userId, clients, reloadClients, setSelectedClient,
                     .eq("id", editingClient.id);
                 if (error) throw error;
             } else {
+                let drive_folder_id = null;
+                const webhook = import.meta.env.VITE_N8N_FOLDER_WEBHOOK;
+                
+                if (webhook && credits?.folder_drive_id) {
+                    try {
+                        const res = await fetch(webhook, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                cliente_nombre: cleanNombre,
+                                parent_folder_id: credits.folder_drive_id
+                            })
+                        });
+                        const data = await res.json();
+                        if (data?.folderId) {
+                            drive_folder_id = data.folderId;
+                        }
+                    } catch (err) {
+                        console.warn("N8N Folder Webhook Error:", err);
+                    }
+                }
+
                 const { error } = await supabase.from("config_clientes_multi").insert([{
                     user_id: userId,
                     nombre: cleanNombre,
                     rnc: cleanRNC,
-                    sector: formData.sector
+                    sector: formData.sector,
+                    drive_folder_id: drive_folder_id
                 }]);
                 if (error) throw error;
             }
