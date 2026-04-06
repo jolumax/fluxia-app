@@ -29,7 +29,7 @@ export function IT1View({ invoices, selectedClient, credits }) {
     const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     const years = [2024, 2025, 2026];
     const plan = credits?.plan?.toLowerCase() ?? "basic";
-    const hasAccess = plan === "pro" || plan === "premium";
+    const hasAccess = plan === "pro" || plan === "premium" || plan === "trial";
 
     // 3. EFECTOS
     useEffect(() => {

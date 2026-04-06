@@ -80,8 +80,9 @@ export function Onboarding({ userId, userEmail, reloadCredits }) {
 
                 {step === 2 && (
                     <div>
-                        <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
+                        <div className="grid-responsive" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
                             {[
+                                { id: "trial", t: "Trial", desc: "10 facturas gratis de prueba", price: "$0.00", color: "#94a3b8" },
                                 { id: "basic", t: "Básico", desc: "150 facturas/mes", price: "$25.00", color: "var(--text-muted)" },
                                 { id: "pro", t: "Pro", desc: "500 facturas/mes", price: "$56.00", color: "var(--accent)", popular: true },
                                 { id: "premium", t: "Premium", desc: "2500 facturas", price: "$129.99", color: "#FFD700" }

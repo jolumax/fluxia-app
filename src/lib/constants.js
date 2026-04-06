@@ -1,16 +1,19 @@
 export const WHOP_PRODUCT_IDS = {
+    trial: "prod_XNwFejzn1b1Bf", // ID aproximado para trial
     basic: "prod_TBwVPWE8Fa3Pa",
     pro: "prod_diB0yzJQ2xq5M",
     premium: "prod_ZEDwjwk374Dpy"
 };
 
 export const WHOP_CHECKOUTS = {
+    trial: "https://whop.com/checkout/plan_XNwFejzn1b1Bf",
     basic: "https://whop.com/checkout/plan_RrfZ9FAZn65kx",
     pro: "https://whop.com/checkout/plan_ldaj8xJ6vh51X",
     premium: "https://whop.com/checkout/plan_gDhFpP4VsnImM"
 };
 
 export const PLAN_INFO = {
+    trial: { nombre: "Trial", precio: "$0.00", creditos: 10, descripcion: "10 facturas (Prueba)" },
     basic: { nombre: "Básico", precio: "$25.00", creditos: 150, descripcion: "150 facturas/mes" },
     pro: { nombre: "Pro", precio: "$56.00", creditos: 500, descripcion: "500 facturas/mes" },
     premium: { nombre: "Premium", precio: "$129.99", creditos: 2500, descripcion: "2,500 facturas/mes" }

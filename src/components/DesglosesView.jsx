@@ -8,7 +8,7 @@ export function DesglosesView({ invoices, loading, credits }) {
 
     // Plan gate: Solo Pro y Premium
     const plan = credits?.plan?.toLowerCase() ?? "basic";
-    const hasAccess = plan === "pro" || plan === "premium";
+    const hasAccess = plan === "pro" || plan === "premium" || plan === "trial";
 
     if (loading) {
         return (
