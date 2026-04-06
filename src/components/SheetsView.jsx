@@ -6,7 +6,7 @@ import { Skeleton } from "./common/Skeleton";
 import { exportControlReport } from "../utils/exportLogic";
 import { InvoiceEditModal } from "./InvoiceEditModal";
 
-export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoice, dataLoading, credits, selectedClient, filters, setFilters, searchTerm, setSearchTerm, addToast, confirmAction }) {
+export function SheetsView({ invoices, reloadInvoices, deleteInvoice, editInvoice, dataLoading, credits, selectedClient, filters, setFilters, searchTerm, setSearchTerm, confirmAction }) {
     const [editingInvoice, setEditingInvoice] = useState(null);
     const [statusFilter, setStatusFilter] = useState("all");
 

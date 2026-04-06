@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { suggestCategory } from "../utils/categoryAI";
+import { supabase } from "../lib/supabase";
 
 export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
     const [invoices, setInvoices] = useState(null);
@@ -19,13 +20,6 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
         const fetchAirtable = async () => {
             setLoading(true);
             try {
-                const token = import.meta.env.VITE_AIRTABLE_TOKEN;
-                if (!token) {
-                    console.error("❌ VITE_AIRTABLE_TOKEN no está definido en .env");
-                    setLoading(false);
-                    return;
-                }
-
                 const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
                 const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
 
@@ -47,27 +41,40 @@ export function useAirtableInvoices(userId, credits, selectedClientRNC = null) {
                 }
 
                 const sortField = "Procesado en (procesado_en)";
-                const url = new URL(`https://api.airtable.com/v0/${baseId}/${tableId}`);
-                url.searchParams.set("filterByFormula", formula);
-                url.searchParams.set("maxRecords", "500");
-                url.searchParams.set("sort[0][field]", sortField);
-                url.searchParams.set("sort[0][direction]", "desc");
+                
+                const queryParams = new URLSearchParams();
+                queryParams.append("filterByFormula", formula);
+                queryParams.append("maxRecords", "500");
+                queryParams.append("sort[0][field]", sortField);
+                queryParams.append("sort[0][direction]", "desc");
+                
+                const endpoint = `${baseId}/${tableId}?${queryParams.toString()}`;
 
-                console.log("🔍 Airtable fetch:", { userId, selectedClientRNC, formula });
+                const { data: sessionData } = await supabase.auth.getSession();
+                const token = sessionData?.session?.access_token;
 
-                const res = await fetch(url.toString(), {
-                    headers: { Authorization: `Bearer ${token}` },
-                    cache: "no-store"
+                console.log("🔍 Airtable fetch via Edge Function:", { userId, selectedClientRNC, formula });
+
+                const { data, error } = await supabase.functions.invoke("airtable-proxy", {
+                    body: {
+                        action: "GET",
+                        endpoint: endpoint
+                    },
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
                 });
 
-                if (!res.ok) {
-                    const errText = await res.text();
-                    console.error("❌ Airtable API error:", res.status, errText);
+                if (error) {
+                    console.error("❌ Airtable Proxy error:", error);
+                    setLoading(false);
+                    return;
+                }
+                
+                if (data?.error) {
+                    console.error("❌ Airtable API error:", data.error);
                     setLoading(false);
                     return;
                 }
 
-                const data = await res.json();
                 console.log(`✅ Airtable devolvió ${data.records?.length ?? 0} registros`);
 
                 if (data.records) {

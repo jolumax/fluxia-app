@@ -139,13 +139,19 @@ export default function App() {
         localStorage.setItem("last_invoice_count", invoices.length.toString());
     }, [invoices, addToast]);
 
-    // Detectar retorno desde Whop después de pago/cambio de plan
     useEffect(() => {
         if (!userId) return;
         const params = new URLSearchParams(window.location.search);
+        const modeParam = params.get("mode");
         const planParam = sanitizePlan(params.get("plan"));
         const idParam = sanitizeUUID(params.get("id"));
-        if (!planParam || idParam !== userId) return;
+
+        if (modeParam === "register" && !idParam) {
+            // Intentamos activar el modo registro si no hay ID de usuario logueado todavía
+            // Esto se manejará en el renderizado de LoginScreen
+        }
+
+        if (!planParam || (idParam && idParam !== userId)) return;
 
         const PLAN_LIMITS = { basic: 150, pro: 500, premium: 2500 };
         const newLimit = PLAN_LIMITS[planParam];
@@ -161,15 +167,21 @@ export default function App() {
     const deleteInvoiceFromAirtable = async (airtableId) => {
         withGlobalLock(async () => {
             try {
-                const token = import.meta.env.VITE_AIRTABLE_TOKEN;
                 const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
                 const tableId = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
-                const res = await fetch(`https://api.airtable.com/v0/${baseId}/${tableId}/${airtableId}`, {
-                    method: "DELETE",
-                    headers: { Authorization: `Bearer ${token}` }
+                
+                const { data: sessionData } = await supabase.auth.getSession();
+                const token = sessionData?.session?.access_token;
+
+                const { data, error } = await supabase.functions.invoke("airtable-proxy", {
+                    body: {
+                        action: "DELETE",
+                        endpoint: `${baseId}/${tableId}/${airtableId}`
+                    },
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
                 });
                 
-                if (res.ok) {
+                if (!error && !data?.error) {
                     // Actualización Optimista: Eliminar del estado local inmediatamente
                     if (setInvoices) {
                         setInvoices(prev => prev.filter(inv => inv.airtableId !== airtableId));
@@ -315,6 +327,7 @@ export default function App() {
             {!session || isResetting ? (
                 <LoginScreen 
                     isResetting={isResetting} 
+                    initialRegister={new URLSearchParams(window.location.search).get("mode") === "register"}
                     onResetDone={() => {
                         setIsResetting(false);
                         window.location.href = "/";

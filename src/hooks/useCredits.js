@@ -21,7 +21,7 @@ export function useCredits(userId) {
                 if (configErr && configErr.code !== 'PGRST116') throw configErr;
                 if (!config) { setCredits(null); return; }
 
-                const { data: user, error: userErr } = await supabase
+                const { data: user } = await supabase
                     .from("usuarios")
                     .select("rnc_empresa")
                     .eq("id", userId)

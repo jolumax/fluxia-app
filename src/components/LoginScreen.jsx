@@ -3,14 +3,15 @@ import { Icon } from "./common/Icon";
 import { icons } from "../lib/icons";
 import { supabase } from "../lib/supabase";
 
-export function LoginScreen({ isResetting, onResetDone }) {
+export function LoginScreen({ isResetting, onResetDone, initialRegister }) {
     const [email, setEmail] = useState("");
     const [pass, setPass] = useState("");
     const [loading, setLoading] = useState(false);
     const [forgot, setForgot] = useState(false);
-    const [isRegister, setIsRegister] = useState(false);
+    const [isRegister, setIsRegister] = useState(initialRegister || false);
     const [error, setError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
+    const [pendingEmail, setPendingEmail] = useState(null);
 
     const [showPassword, setShowPassword] = useState(false);
 
@@ -18,7 +19,13 @@ export function LoginScreen({ isResetting, onResetDone }) {
         setLoading(true);
         setError(null);
         const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (error) setError(error.message);
+        if (error) {
+            if (error.message.toLowerCase().includes("confirm") || error.message.toLowerCase().includes("verified")) {
+                setPendingEmail(email);
+            } else {
+                setError(error.message);
+            }
+        }
         setLoading(false);
     };
 
@@ -35,9 +42,24 @@ export function LoginScreen({ isResetting, onResetDone }) {
         if (error) {
             setError(error.message);
         } else if (data?.user && !data?.session) {
-            setSuccessMessage("¡Cuenta creada! Revisa tu correo para confirmarla.");
-            setIsRegister(false);
-            setPass("");
+            setPendingEmail(email);
+        }
+        setLoading(false);
+    };
+
+    const doResend = async () => {
+        setLoading(true);
+        const { error } = await supabase.auth.resend({
+            type: 'signup',
+            email: pendingEmail || email,
+            options: {
+                emailRedirectTo: window.location.origin
+            }
+        });
+        if (error) setError(error.message);
+        else {
+            setSuccessMessage("Enlace de confirmación reenviado.");
+            setTimeout(() => setSuccessMessage(null), 5000);
         }
         setLoading(false);
     };
@@ -65,6 +87,50 @@ export function LoginScreen({ isResetting, onResetDone }) {
         }
         setLoading(false);
     };
+
+    if (pendingEmail) {
+        return (
+            <div className="login-bg">
+                <div className="login-card" style={{ textAlign: "center" }}>
+                    <div style={{ 
+                        width: 64, 
+                        height: 64, 
+                        background: "rgba(59,130,246,0.1)", 
+                        borderRadius: "50%", 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "center", 
+                        margin: "0 auto 24px" 
+                    }}>
+                        <div className="brain-pulse" style={{ color: "var(--accent)" }}>
+                            <Icon d={icons.mail} size={32} />
+                        </div>
+                    </div>
+                    
+                    <h2 className="font-display" style={{ fontSize: 24, marginBottom: 12 }}>¡Verifica tu correo!</h2>
+                    <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 32 }}>
+                        Hemos enviado un enlace de confirmación a:<br/>
+                        <strong style={{ color: "var(--text-primary)" }}>{pendingEmail}</strong>
+                    </p>
+
+                    {successMessage && <div className="badge badge-success" style={{ width: "100%", marginBottom: 16 }}>{successMessage}</div>}
+                    {error && <div className="badge badge-danger" style={{ width: "100%", marginBottom: 16 }}>{error}</div>}
+
+                    <button className="btn-primary" onClick={doResend} disabled={loading} style={{ marginBottom: 12 }}>
+                        {loading ? "Reenviando..." : "Reenviar enlace"}
+                    </button>
+
+                    <button className="btn-ghost" onClick={() => { setPendingEmail(null); setIsRegister(false); setError(null); }} style={{ width: "100%", fontSize: 13 }}>
+                        Volver al inicio de sesión
+                    </button>
+
+                    <div style={{ marginTop: 32, paddingTop: 24, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "var(--text-muted)" }}>
+                        ¿No lo encuentras? Revisa tu carpeta de <strong>SPAM</strong> o correo no deseado.
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (isResetting) {
         return (

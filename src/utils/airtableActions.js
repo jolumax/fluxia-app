@@ -1,19 +1,16 @@
-const AIRTABLE_TOKEN = import.meta.env.VITE_AIRTABLE_TOKEN;
-const BASE_ID = import.meta.env.VITE_AIRTABLE_BASE_ID || "appPfkS3Gi2CJEDuG";
-const TABLE_ID = import.meta.env.VITE_AIRTABLE_TABLE_ID || "tbl7XkZpew0ZU64rG";
+import { supabase } from "../lib/supabase";
+
+const BASE_ID = "appPfkS3Gi2CJEDuG";
+const TABLE_ID = "tbl7XkZpew0ZU64rG";
 
 /**
- * Updates the status of multiple invoices in Airtable.
- * Airtable allows up to 10 records per PATCH request.
- * @param {string[]} recordIds - Array of Airtable record IDs (not request_ids).
- * @param {string} newStatus - The status to set (e.g., 'confirmed').
+ * Updates the status of multiple invoices in Airtable using the Edge Function.
+ * @param {string[]} recordIds - Array of Airtable record IDs.
+ * @param {string} newStatus - The status to set.
  */
 export async function bulkUpdateInvoiceStatus(recordIds, newStatus = "confirmed") {
-    if (!AIRTABLE_TOKEN || !recordIds.length) return { success: false, message: "Faltan datos" };
+    if (!recordIds.length) return { success: false, message: "Faltan datos" };
 
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
-    
-    // Batch into groups of 10
     const batches = [];
     for (let i = 0; i < recordIds.length; i += 10) {
         batches.push(recordIds.slice(i, i + 10));
@@ -24,90 +21,86 @@ export async function bulkUpdateInvoiceStatus(recordIds, newStatus = "confirmed"
         const payload = {
             records: batch.map(id => ({
                 id: id,
-                fields: {
-                    status: newStatus
-                }
+                fields: { status: newStatus }
             }))
         };
 
-        try {
-            const res = await fetch(url, {
-                method: "PATCH",
-                headers: {
-                    Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
 
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.error?.message || "Error al actualizar lote");
-            }
-            results.push(await res.json());
-        } catch (error) {
+        const { data, error } = await supabase.functions.invoke("airtable-proxy", {
+            body: {
+                action: "PATCH",
+                endpoint: `${BASE_ID}/${TABLE_ID}`,
+                payload
+            },
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+
+        if (error) {
             console.error("Batch update failed:", error);
-            throw error;
+            throw new Error(error.message || "Error al actualizar lote");
         }
+        
+        if (data?.error) {
+            throw new Error(data.error.message || "Error al actualizar lote");
+        }
+
+        results.push(data);
     }
 
     return { success: true, count: recordIds.length };
 }
 
 /**
- * Updates a single invoice record in Airtable with the given fields.
+ * Updates a single invoice record in Airtable.
  * @param {string} recordId - The Airtable record ID.
  * @param {Object} updatedFields - The fields to update.
  */
 export async function updateInvoiceInAirtable(recordId, updatedFields) {
-    if (!AIRTABLE_TOKEN || !recordId) return { success: false, message: "Faltan datos" };
+    if (!recordId) return { success: false, message: "Faltan datos" };
 
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}/${recordId}`;
-    try {
-        const res = await fetch(url, {
-            method: "PATCH",
-            headers: {
-                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ fields: updatedFields })
-        });
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
 
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error?.message || "Error al actualizar factura");
-        }
-        return await res.json();
-    } catch (error) {
-        console.error("Single update failed:", error);
-        throw error;
+    const { data, error } = await supabase.functions.invoke("airtable-proxy", {
+        body: {
+            action: "PATCH",
+            endpoint: `${BASE_ID}/${TABLE_ID}/${recordId}`,
+            payload: { fields: updatedFields }
+        },
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+
+    if (error || data?.error) {
+        console.error("Single update failed:", error || data?.error);
+        throw new Error("Error al actualizar factura");
     }
+
+    return data;
 }
+
 /**
  * Creates a new invoice record in Airtable.
  * @param {Object} fields - The fields for the new invoice.
  */
 export async function createInvoiceInAirtable(fields) {
-    if (!AIRTABLE_TOKEN) return { success: false, message: "Faltan datos de autenticación" };
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
 
-    const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
-    try {
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ fields: fields })
-        });
+    const { data, error } = await supabase.functions.invoke("airtable-proxy", {
+        body: {
+            action: "POST",
+            endpoint: `${BASE_ID}/${TABLE_ID}`,
+            payload: { fields: fields }
+        },
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
 
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error?.message || "Error al crear factura");
-        }
-        return await res.json();
-    } catch (error) {
-        console.error("Create failed:", error);
-        throw error;
+    if (error || data?.error) {
+        console.error("Create failed:", error || data?.error);
+        throw new Error("Error al crear factura");
     }
+
+    return data;
 }
