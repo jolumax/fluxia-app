@@ -46,6 +46,18 @@ export function Topbar({ page, userEmail, invoices, onSearch, clients, selectedC
                     <Icon d={icons.calendar} size={12} stroke="var(--accent)" />
                     <span style={{ fontSize: 11.5, color: "var(--text-secondary)", fontWeight: 600, letterSpacing: 0.2 }}>{fechaHoy}</span>
                 </div>
+                {/* Security Indicator */}
+                <div className="topbar-desktop-only" style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    background: "rgba(16,185,129,0.08)",
+                    border: "1px solid rgba(16,185,129,0.2)",
+                    borderRadius: 20,
+                    padding: "4px 10px",
+                    cursor: "help"
+                }} title="Protección de datos (RLS) Activa">
+                    <Icon d={icons.shield} size={11} stroke="var(--success)" strokeWidth={2.5} />
+                    <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase" }}>Seguro</span>
+                </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div className="topbar-client-selector" style={{ position: "relative", minWidth: 200 }}>

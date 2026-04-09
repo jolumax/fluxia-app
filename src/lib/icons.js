@@ -40,4 +40,6 @@ export const icons = {
     arrowUp: "M12 19V5M5 12l7-7 7 7",
     arrowDown: "M12 5v14M19 12l-7 7-7-7",
     menu: "M3 12h18M3 6h18M3 18h18",
+    shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+    lock: "M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4",
 };
