@@ -22,6 +22,10 @@
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://apuxpnlcycsfuhaedagk.supabase.co; connect-src 'self' https://apuxpnlcycsfuhaedagk.supabase.co https://srvsf.app.n8n.cloud;"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), browsing-topics=()"
         }
       ]
     }
