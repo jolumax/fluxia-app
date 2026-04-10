@@ -157,6 +157,43 @@ export function Configuracion({ userId, userEmail, credits, reloadCredits }) {
                         <button className="btn-primary" onClick={handleUpdatePassword} disabled={loading} style={{ width: '100%' }}>
                             {loading ? "Actualizando..." : "Cambiar contraseña"}
                         </button>
+
+                        <div className="divider" style={{ margin: '32px 0 20px' }} />
+
+                        {/* Zona de Peligro */}
+                        <div style={{ 
+                            padding: "20px", 
+                            borderRadius: 12, 
+                            border: "1px solid rgba(239,68,68,0.2)", 
+                            background: "rgba(239,68,68,0.02)" 
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                                <Icon d={icons.alert} size={18} stroke="var(--danger)" />
+                                <div style={{ fontWeight: 800, fontSize: 14, color: "var(--danger)", letterSpacing: 0.5 }}>ZONA DE PELIGRO</div>
+                            </div>
+                            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
+                                Las siguientes acciones son irreversibles. Por favor, procede con cautela.
+                            </p>
+                            
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Limpiar todos mis datos</div>
+                                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Elimina permanentemente todas tus facturas y registros.</div>
+                                </div>
+                                <button 
+                                    className="btn-ghost" 
+                                    style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "8px 16px", fontSize: 11, fontWeight: 700 }}
+                                    onClick={() => {
+                                        const confirm = window.confirm("⚠️ ¿ESTÁS TOTALMENTE SEGURO? Esta acción borrará todas tus facturas de forma permanente y no se puede deshacer.");
+                                        if (confirm) {
+                                            alert("Esta función requiere borrar registros en Airtable. Por seguridad, contacta a soporte para limpiezas masivas o elimina las facturas individualmente desde el Dashboard.");
+                                        }
+                                    }}
+                                >
+                                    Limpiar Datos
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
